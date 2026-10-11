@@ -20,14 +20,21 @@ Search for documents in Scopus using a query string.
 
 ### `search_all` · **OpenAlex**
 
-Search Scopus (or OpenAlex with source='openalex') and page through results automatically, returning up to max_results entries in one call. Scopus pages hold SCOPUS_PAGE_SIZE records (default 25) and switch to cursor paging beyond 5,000; OpenAlex pages hold 200. Results over 50 records are written to disk as JSON and CSV. Large max_results values consume significant quota — use conservatively.
+Search Scopus (or OpenAlex with source='openalex') and page through results automatically, returning up to max_results entries in one call. Scopus pages hold SCOPUS_PAGE_SIZE records (default 25) and switch to cursor paging beyond 5,000; OpenAlex pages hold 200. Results over 50 records are written to disk as JSON and CSV. Large max_results values consume significant quota — use conservatively. With source='openalex', topics keeps papers about OpenAlex topics, subfields or fields (default record types: articles, reviews, books, book chapters); one extra request resolves each name, and a scope of more than 50 journals runs one request chain per 50.
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
 | `query` | string | required | Search query. Scopus: Scopus syntax (e.g., 'TITLE(AI) AND PUBYEAR > 2020'). OpenAlex: plain words matched against title and abstract; quote phrases (e.g., '"organizing vision"'). |
 | `max_results` | integer | 200 | Maximum total results to fetch across all pages (default 200). Large values consume quota. |
 | `sort` | string |  | Sort order (e.g., 'coverDate', 'relevancy', 'citedby'). Defaults to 'coverDate' for Scopus, 'relevance' for OpenAlex. |
-| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight), or the path to a CSV file with an ISSN column (find_journals output, a Litbaskets export, a list you keep locally; columns named like issn or eissn are read, several ISSNs per cell allowed). ISSNs are used rather than journal names, which Scopus spells inconsistently. On OpenAlex, lists over 50 journals run as several requests. |
+| `topics` | list of string |  | OpenAlex only. Keep papers about these topics, subfields or fields: topic IDs ('T10346'), 'subfield:1710' or 'field:17' (or 'subfields/1710', 'fields/17'), or exact names ('Digital Transformation'). Several entries combine as OR, all at one level. A name that matches more than one entity, or none exactly, is refused with the candidates listed. Each name costs one extra request (the 26 fields and 252 subfields are fetched once and cached). Combines with scope and quality as AND. Not available with source='scopus'. |
+| `topic_match` | `primary` \| `any` | primary | 'primary' (default) matches the one topic OpenAlex ranks first for a paper: a tighter corpus. 'any' matches a paper when any of its assigned topics (up to three) is in the scope: wider, and it catches papers that sit between fields. |
+| `work_types` |  |  | With topics: the OpenAlex record types to keep. Default ['article', 'review', 'book', 'book-chapter'], which leaves out datasets, specimens, proposals and other records that now receive topics. 'all' keeps every type. |
+| `min_percentile` | integer |  | OpenAlex only. Quality cut-off, relative to each journal's own field: keep papers from journals whose CiteScore percentile in their Scopus subject category is at least this (75 = top quartile). A marketing journal is compared with marketing journals, an IS journal with IS journals, so one corpus can span fields. 0 keeps every journal Scopus indexes and nothing else, a floor that removes most junk venues. Needs Scopus Serial Title access; without it the cut refuses, as OpenAlex's own measures cannot be compared across fields. Cost: 1 OpenAlex request per 200 venues, 1 per 50 for their ISSNs, 1 Scopus request per 25 ISSNs, then the search itself in chunks of 50 journals. Journals kept, dropped and without CiteScore are listed in the output and a CSV. |
+| `percentile_rule` | `best` \| `all` | best | Which category decides when a journal sits in several. 'best' (default): its highest percentile, generous to multidisciplinary journals. 'all': it must clear the bar in every category it is listed in. |
+| `categories` | list of string |  | Only these Scopus (ASJC) categories count toward the percentile: 4-digit codes or category names. A journal ranked in none of them is dropped. Leave out to count all of a journal's categories. |
+| `include_venues` | list of string |  | Venues kept whatever their percentile: ISSNs or OpenAlex source IDs (S...). Use for conference proceedings such as ICIS, ECIS or HICSS, which have no journal CiteScore and are otherwise dropped. |
 | `inline` | `sample` \| `compact` \| `full` | sample | What comes back in the reply when results go to files (over 50 records). 'sample' (default): the first 10. 'compact': every record as one JSON line of key fields (IDs, DOI, year, first author, title, venue, ISSN, citations): use it when the caller cannot read the server's files, e.g. from a cloud session. 'full': every record in full (large). |
 
 ### `search_fulltext`
@@ -46,17 +53,17 @@ Search the full text of Elsevier (ScienceDirect) journal articles, not just titl
 | `context` | boolean | False | Analyse mentions in the top results' full texts. |
 | `max_context` | integer | 10 | Articles to analyse when context=true (default 10, max 25); one full-text request each. |
 
-### `get_abstract_details`
+### `get_abstract_details` · **OpenAlex**
 
-Retrieve full details for a specific document by Scopus ID.
+Retrieve full details for a document by Scopus ID. With source='openalex', or when no Scopus key is set, a DOI or an OpenAlex work ID (W...) is looked up in OpenAlex instead.
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
-| `scopus_id` | string | required | The Scopus ID of the document. |
+| `scopus_id` | string | required | The Scopus ID of the document, or a DOI / OpenAlex work ID for the OpenAlex route. |
 
-### `resolve_identifier`
+### `resolve_identifier` · **OpenAlex**
 
-Resolve any document identifier (Scopus ID, EID, DOI, or PII) to the full cross-reference set (scopus_id, eid, doi, pii, title). Use this to obtain a DOI for cross-linking with OpenAlex/Crossref, or to normalize an ID before calling other tools.
+Resolve any document identifier (Scopus ID, EID, DOI, or PII) to the full cross-reference set (scopus_id, eid, doi, pii, title). Use this to obtain a DOI for cross-linking with OpenAlex/Crossref, or to normalize an ID before calling other tools. With source='openalex' (or no Scopus key), a DOI or OpenAlex work ID resolves through OpenAlex to openalex_id, doi, pubmed_id, pmcid and title; OpenAlex carries no Scopus ID.
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -73,13 +80,13 @@ Find authors by name, optionally narrowed by affiliation. Scopus (default, needs
 | `affiliation` | string |  | Optional affiliation words to narrow the match, e.g. 'Los Angeles'. |
 | `count` | integer | 10 | Number of authors to return (default 10, max 25). |
 
-### `get_author_profile`
+### `get_author_profile` · **OpenAlex**
 
-Retrieve an author's profile by Author ID.
+Retrieve an author's profile by Scopus Author ID. With source='openalex', or when no Scopus key is set, an OpenAlex author ID (A...) or an ORCID is looked up in OpenAlex instead.
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
-| `author_id` | string | required | The Scopus Author ID. |
+| `author_id` | string | required | The Scopus Author ID, or an OpenAlex author ID / ORCID for the OpenAlex route. |
 
 ### `get_fulltext`
 
@@ -150,7 +157,7 @@ Walk the citation lineage of a seed paper across multiple generations. Forward: 
 | `min_citing` | integer | 0 | Only expand papers that have at least this many citing papers (default 0 = expand all up to max_per_node). Pruning high values avoids exploding on trivially-cited nodes. Ignored for backward direction. |
 | `direction` | `forward` \| `backward` | forward | 'forward' (default): walk citing papers via search_all + REF(). Fan-out can be large; use max_per_node to bound quota. 'backward': walk cited references via get_references, up to max_per_node per paper; references with no ID are skipped. |
 | `sort` | `citedby` \| `coverDate` \| `relevancy` | citedby | How to rank citing papers before the max_per_node cap is applied (forward direction only; ignored for backward). 'citedby' (default): highest citation count first — captures the high-flow backbone. 'coverDate': most recent first — captures the current fringe but may produce a recency-dominated walk on high-citation seeds. 'relevancy': Scopus relevance score (Scopus only). |
-| `scope` |  |  | Forward walks only: keep citing papers from these journals (ISSN list, or 'basket_of_eight'/'ais8'). The filter goes into the search, so max_per_node counts in-scope papers only. Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `scope` |  |  | Forward walks only: keep citing papers from these journals (ISSN list, or 'basket_of_eight'/'ais8'). The filter goes into the search, so max_per_node counts in-scope papers only. Restrict to journals, by ISSN: a list of ISSNs, a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight), or the path to a CSV file with an ISSN column (find_journals output, a Litbaskets export, a list you keep locally; columns named like issn or eissn are read, several ISSNs per cell allowed). ISSNs are used rather than journal names, which Scopus spells inconsistently. On OpenAlex, lists over 50 journals run as several requests. |
 
 ### `citation_network` · **OpenAlex**
 
@@ -162,7 +169,15 @@ Direct-citation network within a set of papers, in one call: fetches every paper
 | `query` | string |  | Search query defining the set, instead of ids. |
 | `max_results` | integer | 300 | With query: how many papers to include (default 300). |
 | `corpus_file` | string |  | A corpus file from import_records, instead of ids or query. |
-| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight), or the path to a CSV file with an ISSN column (find_journals output, a Litbaskets export, a list you keep locally; columns named like issn or eissn are read, several ISSNs per cell allowed). ISSNs are used rather than journal names, which Scopus spells inconsistently. On OpenAlex, lists over 50 journals run as several requests. |
+| `topics` | list of string |  | OpenAlex only. Keep papers about these topics, subfields or fields: topic IDs ('T10346'), 'subfield:1710' or 'field:17' (or 'subfields/1710', 'fields/17'), or exact names ('Digital Transformation'). Several entries combine as OR, all at one level. A name that matches more than one entity, or none exactly, is refused with the candidates listed. Each name costs one extra request (the 26 fields and 252 subfields are fetched once and cached). Combines with scope and quality as AND. Not available with source='scopus'. |
+| `topic_match` | `primary` \| `any` | primary | 'primary' (default) matches the one topic OpenAlex ranks first for a paper: a tighter corpus. 'any' matches a paper when any of its assigned topics (up to three) is in the scope: wider, and it catches papers that sit between fields. |
+| `work_types` |  |  | With topics: the OpenAlex record types to keep. Default ['article', 'review', 'book', 'book-chapter'], which leaves out datasets, specimens, proposals and other records that now receive topics. 'all' keeps every type. |
+| `min_percentile` | integer |  | OpenAlex only. Quality cut-off, relative to each journal's own field: keep papers from journals whose CiteScore percentile in their Scopus subject category is at least this (75 = top quartile). A marketing journal is compared with marketing journals, an IS journal with IS journals, so one corpus can span fields. 0 keeps every journal Scopus indexes and nothing else, a floor that removes most junk venues. Needs Scopus Serial Title access; without it the cut refuses, as OpenAlex's own measures cannot be compared across fields. Cost: 1 OpenAlex request per 200 venues, 1 per 50 for their ISSNs, 1 Scopus request per 25 ISSNs, then the search itself in chunks of 50 journals. Journals kept, dropped and without CiteScore are listed in the output and a CSV. |
+| `percentile_rule` | `best` \| `all` | best | Which category decides when a journal sits in several. 'best' (default): its highest percentile, generous to multidisciplinary journals. 'all': it must clear the bar in every category it is listed in. |
+| `categories` | list of string |  | Only these Scopus (ASJC) categories count toward the percentile: 4-digit codes or category names. A journal ranked in none of them is dropped. Leave out to count all of a journal's categories. |
+| `include_venues` | list of string |  | Venues kept whatever their percentile: ISSNs or OpenAlex source IDs (S...). Use for conference proceedings such as ICIS, ECIS or HICSS, which have no journal CiteScore and are otherwise dropped. |
+| `flow_level` | `field` \| `subfield` | field | OpenAlex only. Level of the field-to-field citation matrix (citing field by cited field, share of within-field and cross-field citations, largest cross-field flows) and of the field labels on the main path. Computed from the records already fetched; no extra requests. |
 | `key_routes` | integer | 10 | Number of top-SPC key edges to extend into key-route main paths (Liu & Lu 2012; default 10, 0 = none). Key edges that extend into the same route are merged. |
 | `check_completeness` | boolean | True | Compare each reference list with an independent count (default true). |
 | `weight` | `spc` \| `splc` \| `spnp` | spc | Traversal weight for the main paths and key routes: 'spc' (search path count, source-to-sink paths), 'splc' (search path link count: paths starting at any paper), 'spnp' (search path node pair: paths between any two papers). Liu & Lu 2012. |
@@ -186,7 +201,14 @@ Garfield's historiograph: the papers most cited within the set (local citation s
 | `query` | string |  | Search query defining the set, instead of ids. |
 | `corpus_file` | string |  | A corpus file from import_records, instead of ids or query. |
 | `max_results` | integer | 300 | With query: how many papers to include (default 300). |
-| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight), or the path to a CSV file with an ISSN column (find_journals output, a Litbaskets export, a list you keep locally; columns named like issn or eissn are read, several ISSNs per cell allowed). ISSNs are used rather than journal names, which Scopus spells inconsistently. On OpenAlex, lists over 50 journals run as several requests. |
+| `topics` | list of string |  | OpenAlex only. Keep papers about these topics, subfields or fields: topic IDs ('T10346'), 'subfield:1710' or 'field:17' (or 'subfields/1710', 'fields/17'), or exact names ('Digital Transformation'). Several entries combine as OR, all at one level. A name that matches more than one entity, or none exactly, is refused with the candidates listed. Each name costs one extra request (the 26 fields and 252 subfields are fetched once and cached). Combines with scope and quality as AND. Not available with source='scopus'. |
+| `topic_match` | `primary` \| `any` | primary | 'primary' (default) matches the one topic OpenAlex ranks first for a paper: a tighter corpus. 'any' matches a paper when any of its assigned topics (up to three) is in the scope: wider, and it catches papers that sit between fields. |
+| `work_types` |  |  | With topics: the OpenAlex record types to keep. Default ['article', 'review', 'book', 'book-chapter'], which leaves out datasets, specimens, proposals and other records that now receive topics. 'all' keeps every type. |
+| `min_percentile` | integer |  | OpenAlex only. Quality cut-off, relative to each journal's own field: keep papers from journals whose CiteScore percentile in their Scopus subject category is at least this (75 = top quartile). A marketing journal is compared with marketing journals, an IS journal with IS journals, so one corpus can span fields. 0 keeps every journal Scopus indexes and nothing else, a floor that removes most junk venues. Needs Scopus Serial Title access; without it the cut refuses, as OpenAlex's own measures cannot be compared across fields. Cost: 1 OpenAlex request per 200 venues, 1 per 50 for their ISSNs, 1 Scopus request per 25 ISSNs, then the search itself in chunks of 50 journals. Journals kept, dropped and without CiteScore are listed in the output and a CSV. |
+| `percentile_rule` | `best` \| `all` | best | Which category decides when a journal sits in several. 'best' (default): its highest percentile, generous to multidisciplinary journals. 'all': it must clear the bar in every category it is listed in. |
+| `categories` | list of string |  | Only these Scopus (ASJC) categories count toward the percentile: 4-digit codes or category names. A journal ranked in none of them is dropped. Leave out to count all of a journal's categories. |
+| `include_venues` | list of string |  | Venues kept whatever their percentile: ISSNs or OpenAlex source IDs (S...). Use for conference proceedings such as ICIS, ECIS or HICSS, which have no journal CiteScore and are otherwise dropped. |
 | `top` | integer | 30 | Papers to draw, by local citation score (default 30). |
 
 ### `rpys` · **OpenAlex**
@@ -199,7 +221,14 @@ Reference Publication Year Spectroscopy (Marx et al. 2014): counts every cited r
 | `query` | string |  | Search query defining the set, instead of ids. |
 | `corpus_file` | string |  | A corpus file from import_records, instead of ids or query. |
 | `max_results` | integer | 300 | With query: how many papers to include (default 300). |
-| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight), or the path to a CSV file with an ISSN column (find_journals output, a Litbaskets export, a list you keep locally; columns named like issn or eissn are read, several ISSNs per cell allowed). ISSNs are used rather than journal names, which Scopus spells inconsistently. On OpenAlex, lists over 50 journals run as several requests. |
+| `topics` | list of string |  | OpenAlex only. Keep papers about these topics, subfields or fields: topic IDs ('T10346'), 'subfield:1710' or 'field:17' (or 'subfields/1710', 'fields/17'), or exact names ('Digital Transformation'). Several entries combine as OR, all at one level. A name that matches more than one entity, or none exactly, is refused with the candidates listed. Each name costs one extra request (the 26 fields and 252 subfields are fetched once and cached). Combines with scope and quality as AND. Not available with source='scopus'. |
+| `topic_match` | `primary` \| `any` | primary | 'primary' (default) matches the one topic OpenAlex ranks first for a paper: a tighter corpus. 'any' matches a paper when any of its assigned topics (up to three) is in the scope: wider, and it catches papers that sit between fields. |
+| `work_types` |  |  | With topics: the OpenAlex record types to keep. Default ['article', 'review', 'book', 'book-chapter'], which leaves out datasets, specimens, proposals and other records that now receive topics. 'all' keeps every type. |
+| `min_percentile` | integer |  | OpenAlex only. Quality cut-off, relative to each journal's own field: keep papers from journals whose CiteScore percentile in their Scopus subject category is at least this (75 = top quartile). A marketing journal is compared with marketing journals, an IS journal with IS journals, so one corpus can span fields. 0 keeps every journal Scopus indexes and nothing else, a floor that removes most junk venues. Needs Scopus Serial Title access; without it the cut refuses, as OpenAlex's own measures cannot be compared across fields. Cost: 1 OpenAlex request per 200 venues, 1 per 50 for their ISSNs, 1 Scopus request per 25 ISSNs, then the search itself in chunks of 50 journals. Journals kept, dropped and without CiteScore are listed in the output and a CSV. |
+| `percentile_rule` | `best` \| `all` | best | Which category decides when a journal sits in several. 'best' (default): its highest percentile, generous to multidisciplinary journals. 'all': it must clear the bar in every category it is listed in. |
+| `categories` | list of string |  | Only these Scopus (ASJC) categories count toward the percentile: 4-digit codes or category names. A journal ranked in none of them is dropped. Leave out to count all of a journal's categories. |
+| `include_venues` | list of string |  | Venues kept whatever their percentile: ISSNs or OpenAlex source IDs (S...). Use for conference proceedings such as ICIS, ECIS or HICSS, which have no journal CiteScore and are otherwise dropped. |
 | `from_year` | integer | 1900 | Earliest cited year to count (default 1900). |
 | `to_year` | integer |  | Latest cited year (default: this year). |
 | `top_peaks` | integer | 10 | Peaks to report (default 10). |
@@ -214,7 +243,14 @@ Research fronts of a paper set: Louvain communities of its direct-citation netwo
 | `query` | string |  | Search query defining the set, instead of ids. |
 | `corpus_file` | string |  | A corpus file from import_records, instead of ids or query. |
 | `max_results` | integer | 300 | With query: how many papers to include (default 300). |
-| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight), or the path to a CSV file with an ISSN column (find_journals output, a Litbaskets export, a list you keep locally; columns named like issn or eissn are read, several ISSNs per cell allowed). ISSNs are used rather than journal names, which Scopus spells inconsistently. On OpenAlex, lists over 50 journals run as several requests. |
+| `topics` | list of string |  | OpenAlex only. Keep papers about these topics, subfields or fields: topic IDs ('T10346'), 'subfield:1710' or 'field:17' (or 'subfields/1710', 'fields/17'), or exact names ('Digital Transformation'). Several entries combine as OR, all at one level. A name that matches more than one entity, or none exactly, is refused with the candidates listed. Each name costs one extra request (the 26 fields and 252 subfields are fetched once and cached). Combines with scope and quality as AND. Not available with source='scopus'. |
+| `topic_match` | `primary` \| `any` | primary | 'primary' (default) matches the one topic OpenAlex ranks first for a paper: a tighter corpus. 'any' matches a paper when any of its assigned topics (up to three) is in the scope: wider, and it catches papers that sit between fields. |
+| `work_types` |  |  | With topics: the OpenAlex record types to keep. Default ['article', 'review', 'book', 'book-chapter'], which leaves out datasets, specimens, proposals and other records that now receive topics. 'all' keeps every type. |
+| `min_percentile` | integer |  | OpenAlex only. Quality cut-off, relative to each journal's own field: keep papers from journals whose CiteScore percentile in their Scopus subject category is at least this (75 = top quartile). A marketing journal is compared with marketing journals, an IS journal with IS journals, so one corpus can span fields. 0 keeps every journal Scopus indexes and nothing else, a floor that removes most junk venues. Needs Scopus Serial Title access; without it the cut refuses, as OpenAlex's own measures cannot be compared across fields. Cost: 1 OpenAlex request per 200 venues, 1 per 50 for their ISSNs, 1 Scopus request per 25 ISSNs, then the search itself in chunks of 50 journals. Journals kept, dropped and without CiteScore are listed in the output and a CSV. |
+| `percentile_rule` | `best` \| `all` | best | Which category decides when a journal sits in several. 'best' (default): its highest percentile, generous to multidisciplinary journals. 'all': it must clear the bar in every category it is listed in. |
+| `categories` | list of string |  | Only these Scopus (ASJC) categories count toward the percentile: 4-digit codes or category names. A journal ranked in none of them is dropped. Leave out to count all of a journal's categories. |
+| `include_venues` | list of string |  | Venues kept whatever their percentile: ISSNs or OpenAlex source IDs (S...). Use for conference proceedings such as ICIS, ECIS or HICSS, which have no journal CiteScore and are otherwise dropped. |
 | `resolution` | number | 1.0 | Louvain resolution: above 1 gives more, smaller fronts (default 1). |
 | `min_size` | integer | 3 | Smallest front reported; smaller groups count as unclustered (default 3). |
 
@@ -230,7 +266,7 @@ All papers citing one or more seed papers, found by several search strategies at
 | --- | --- | --- | --- |
 | `seed_ids` | list of string | required | Seed papers (Scopus IDs/EIDs; with source='openalex', DOIs or OpenAlex IDs), e.g. both papers of a construct's origin. |
 | `queries` | list of string |  | Extra search strategies, e.g. REF("organizing vision") or REFAUTH(swanson) AND REFTITLE("organizing vision"). |
-| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight), or the path to a CSV file with an ISSN column (find_journals output, a Litbaskets export, a list you keep locally; columns named like issn or eissn are read, several ISSNs per cell allowed). ISSNs are used rather than journal names, which Scopus spells inconsistently. On OpenAlex, lists over 50 journals run as several requests. |
 | `verify` | boolean | True | Check each hit's reference list for the seeds (default true). |
 | `cross_check` | boolean |  | Scopus only: list in-scope citers that OpenAlex or Semantic Scholar know and Scopus misses (default: on when scope is set). |
 | `max_results` | integer | 1000 | Cap on hits per strategy (default 1000). |
@@ -277,7 +313,7 @@ Which papers cite the seeds according to Scopus, OpenAlex and Semantic Scholar, 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
 | `seed_ids` | list of string | required | Seed papers (Scopus IDs or EIDs). |
-| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight), or the path to a CSV file with an ISSN column (find_journals output, a Litbaskets export, a list you keep locally; columns named like issn or eissn are read, several ISSNs per cell allowed). ISSNs are used rather than journal names, which Scopus spells inconsistently. On OpenAlex, lists over 50 journals run as several requests. |
 | `max_results` | integer | 1000 | Cap per index and seed (default 1000). |
 
 ### `check_retractions`
@@ -296,13 +332,20 @@ Retractions, withdrawals, expressions of concern and corrections for a set of pa
 
 ### `publication_counts` · **OpenAlex**
 
-Count publications per year for a query, e.g. to chart how attention to a topic rose and fell. Scopus: your query in Scopus syntax, one request per year, so from_year and to_year are required (at most 60 years). OpenAlex: plain words matched against title and abstract (quote phrases), one request for all years. The two sources count differently; compare trends within one source, not levels across sources.
+Count publications per year for a query, e.g. to chart how attention to a topic rose and fell. Scopus: your query in Scopus syntax, one request per year, so from_year and to_year are required (at most 60 years). OpenAlex: plain words matched against title and abstract (quote phrases), one request for all years. The two sources count differently; compare trends within one source, not levels across sources. With source='openalex', topics restricts the count to OpenAlex topics, subfields or fields (one extra request per name to resolve it) and min_percentile adds a journal quality cut relative to each journal's field (extra requests listed on that parameter).
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
 | `query` | string | required | Scopus: Scopus syntax, e.g. 'TITLE-ABS-KEY("organizing vision")'. OpenAlex: e.g. '"organizing vision"'. |
 | `from_year` | integer |  | First year (inclusive). |
 | `to_year` | integer |  | Last year (inclusive). |
+| `topics` | list of string |  | OpenAlex only. Keep papers about these topics, subfields or fields: topic IDs ('T10346'), 'subfield:1710' or 'field:17' (or 'subfields/1710', 'fields/17'), or exact names ('Digital Transformation'). Several entries combine as OR, all at one level. A name that matches more than one entity, or none exactly, is refused with the candidates listed. Each name costs one extra request (the 26 fields and 252 subfields are fetched once and cached). Combines with scope and quality as AND. Not available with source='scopus'. |
+| `topic_match` | `primary` \| `any` | primary | 'primary' (default) matches the one topic OpenAlex ranks first for a paper: a tighter corpus. 'any' matches a paper when any of its assigned topics (up to three) is in the scope: wider, and it catches papers that sit between fields. |
+| `work_types` |  |  | With topics: the OpenAlex record types to keep. Default ['article', 'review', 'book', 'book-chapter'], which leaves out datasets, specimens, proposals and other records that now receive topics. 'all' keeps every type. |
+| `min_percentile` | integer |  | OpenAlex only. Quality cut-off, relative to each journal's own field: keep papers from journals whose CiteScore percentile in their Scopus subject category is at least this (75 = top quartile). A marketing journal is compared with marketing journals, an IS journal with IS journals, so one corpus can span fields. 0 keeps every journal Scopus indexes and nothing else, a floor that removes most junk venues. Needs Scopus Serial Title access; without it the cut refuses, as OpenAlex's own measures cannot be compared across fields. Cost: 1 OpenAlex request per 200 venues, 1 per 50 for their ISSNs, 1 Scopus request per 25 ISSNs, then the search itself in chunks of 50 journals. Journals kept, dropped and without CiteScore are listed in the output and a CSV. |
+| `percentile_rule` | `best` \| `all` | best | Which category decides when a journal sits in several. 'best' (default): its highest percentile, generous to multidisciplinary journals. 'all': it must clear the bar in every category it is listed in. |
+| `categories` | list of string |  | Only these Scopus (ASJC) categories count toward the percentile: 4-digit codes or category names. A journal ranked in none of them is dropped. Leave out to count all of a journal's categories. |
+| `include_venues` | list of string |  | Venues kept whatever their percentile: ISSNs or OpenAlex source IDs (S...). Use for conference proceedings such as ICIS, ECIS or HICSS, which have no journal CiteScore and are otherwise dropped. |
 
 ### `topic_landscape`
 
@@ -318,6 +361,26 @@ Where and at what prestige a topic is published. Runs a Scopus query and reports
 | `sample` | `recent` \| `cited` \| `relevance` | recent | Which papers to analyse when the topic has more than max_papers: most recent, most cited (where influential work appears), or most relevant. |
 | `journals_only` | boolean | True | Count only journal papers in the quartiles; ranked conference proceedings and book series are reported separately. False counts every ranked venue. |
 
+### `topic_profile`
+
+Which disciplines carry a debate, and when each joined it. For an OpenAlex title-and-abstract query, optionally inside OpenAlex topics and a field-relative journal quality cut, reports papers and shares by field, subfield and topic (top N), and per year by field with the first year each field passed a share threshold. Counts papers, reviews, books and book chapters by default (the October 2026 classifier also gives datasets and specimens topics). Uses grouped requests, never one per paper: 4 plus one per year in the range (each multiplied by the number of journal chunks when a quality cut keeps over 50 journals), plus the requests the topic and quality options list. Topics follow the classifier that OpenAlex switched to on 6 October 2026.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `query` | string | required | Plain words matched against title and abstract; quote phrases. |
+| `from_year` | integer |  | First publication year. |
+| `to_year` | integer |  | Last publication year. |
+| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight), or the path to a CSV file with an ISSN column (find_journals output, a Litbaskets export, a list you keep locally; columns named like issn or eissn are read, several ISSNs per cell allowed). ISSNs are used rather than journal names, which Scopus spells inconsistently. On OpenAlex, lists over 50 journals run as several requests. |
+| `topics` | list of string |  | OpenAlex only. Keep papers about these topics, subfields or fields: topic IDs ('T10346'), 'subfield:1710' or 'field:17' (or 'subfields/1710', 'fields/17'), or exact names ('Digital Transformation'). Several entries combine as OR, all at one level. A name that matches more than one entity, or none exactly, is refused with the candidates listed. Each name costs one extra request (the 26 fields and 252 subfields are fetched once and cached). Combines with scope and quality as AND. Not available with source='scopus'. |
+| `topic_match` | `primary` \| `any` | primary | 'primary' (default) matches the one topic OpenAlex ranks first for a paper: a tighter corpus. 'any' matches a paper when any of its assigned topics (up to three) is in the scope: wider, and it catches papers that sit between fields. |
+| `work_types` |  |  | With topics: the OpenAlex record types to keep. Default ['article', 'review', 'book', 'book-chapter'], which leaves out datasets, specimens, proposals and other records that now receive topics. 'all' keeps every type. |
+| `min_percentile` | integer |  | OpenAlex only. Quality cut-off, relative to each journal's own field: keep papers from journals whose CiteScore percentile in their Scopus subject category is at least this (75 = top quartile). A marketing journal is compared with marketing journals, an IS journal with IS journals, so one corpus can span fields. 0 keeps every journal Scopus indexes and nothing else, a floor that removes most junk venues. Needs Scopus Serial Title access; without it the cut refuses, as OpenAlex's own measures cannot be compared across fields. Cost: 1 OpenAlex request per 200 venues, 1 per 50 for their ISSNs, 1 Scopus request per 25 ISSNs, then the search itself in chunks of 50 journals. Journals kept, dropped and without CiteScore are listed in the output and a CSV. |
+| `percentile_rule` | `best` \| `all` | best | Which category decides when a journal sits in several. 'best' (default): its highest percentile, generous to multidisciplinary journals. 'all': it must clear the bar in every category it is listed in. |
+| `categories` | list of string |  | Only these Scopus (ASJC) categories count toward the percentile: 4-digit codes or category names. A journal ranked in none of them is dropped. Leave out to count all of a journal's categories. |
+| `include_venues` | list of string |  | Venues kept whatever their percentile: ISSNs or OpenAlex source IDs (S...). Use for conference proceedings such as ICIS, ECIS or HICSS, which have no journal CiteScore and are otherwise dropped. |
+| `top` | integer | 20 | Fields, subfields and topics to list (largest first). |
+| `share_threshold` | number | 0.05 | A field joins the debate in the first year it makes up at least this share of that year's papers. |
+
 ### `thematic_evolution` · **OpenAlex**
 
 Themes of a corpus and how they change over time (Cobo et al. 2011; as in bibliometrix's thematic map and thematic evolution). Per period: keyword co-occurrence clusters, each placed in the strategic diagram by Callon centrality and density (motor, basic, niche, emerging or declining); between periods: which themes continue, split, merge, appear or vanish (inclusion index). With construct_terms it follows a construct through the periods: the theme that holds it, where that theme sits, and the keywords it keeps company with, i.e. whether the construct stays central, drifts or dissolves into another. Give ids or a query. Writes JSON, CSV and a PNG of the strategic diagrams. Cost: one abstract request per paper (cached).
@@ -328,7 +391,14 @@ Themes of a corpus and how they change over time (Cobo et al. 2011; as in biblio
 | `query` | string |  | Search query defining the set, instead of ids. |
 | `corpus_file` | string |  | A corpus file from import_records, instead of ids or query. |
 | `max_results` | integer | 300 | With query: how many papers to include (default 300). |
-| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight), or the path to a CSV file with an ISSN column (find_journals output, a Litbaskets export, a list you keep locally; columns named like issn or eissn are read, several ISSNs per cell allowed). ISSNs are used rather than journal names, which Scopus spells inconsistently. On OpenAlex, lists over 50 journals run as several requests. |
+| `topics` | list of string |  | OpenAlex only. Keep papers about these topics, subfields or fields: topic IDs ('T10346'), 'subfield:1710' or 'field:17' (or 'subfields/1710', 'fields/17'), or exact names ('Digital Transformation'). Several entries combine as OR, all at one level. A name that matches more than one entity, or none exactly, is refused with the candidates listed. Each name costs one extra request (the 26 fields and 252 subfields are fetched once and cached). Combines with scope and quality as AND. Not available with source='scopus'. |
+| `topic_match` | `primary` \| `any` | primary | 'primary' (default) matches the one topic OpenAlex ranks first for a paper: a tighter corpus. 'any' matches a paper when any of its assigned topics (up to three) is in the scope: wider, and it catches papers that sit between fields. |
+| `work_types` |  |  | With topics: the OpenAlex record types to keep. Default ['article', 'review', 'book', 'book-chapter'], which leaves out datasets, specimens, proposals and other records that now receive topics. 'all' keeps every type. |
+| `min_percentile` | integer |  | OpenAlex only. Quality cut-off, relative to each journal's own field: keep papers from journals whose CiteScore percentile in their Scopus subject category is at least this (75 = top quartile). A marketing journal is compared with marketing journals, an IS journal with IS journals, so one corpus can span fields. 0 keeps every journal Scopus indexes and nothing else, a floor that removes most junk venues. Needs Scopus Serial Title access; without it the cut refuses, as OpenAlex's own measures cannot be compared across fields. Cost: 1 OpenAlex request per 200 venues, 1 per 50 for their ISSNs, 1 Scopus request per 25 ISSNs, then the search itself in chunks of 50 journals. Journals kept, dropped and without CiteScore are listed in the output and a CSV. |
+| `percentile_rule` | `best` \| `all` | best | Which category decides when a journal sits in several. 'best' (default): its highest percentile, generous to multidisciplinary journals. 'all': it must clear the bar in every category it is listed in. |
+| `categories` | list of string |  | Only these Scopus (ASJC) categories count toward the percentile: 4-digit codes or category names. A journal ranked in none of them is dropped. Leave out to count all of a journal's categories. |
+| `include_venues` | list of string |  | Venues kept whatever their percentile: ISSNs or OpenAlex source IDs (S...). Use for conference proceedings such as ICIS, ECIS or HICSS, which have no journal CiteScore and are otherwise dropped. |
 | `cut_years` | list of integer |  | First years of the later periods, e.g. [2005, 2012] gives up to 2004, 2005-2011 and 2012 on. Default: n_periods of similar size. |
 | `n_periods` | integer | 3 | Periods of similar paper counts when cut_years is not given (default 3). |
 | `terms` | `author_keywords` \| `all_keywords` \| `title_abstract` | author_keywords | 'author_keywords' (default; papers without them fall back to Scopus index terms), 'all_keywords' (author keywords plus index terms), 'title_abstract' (phrases from title and abstract; for corpora with few keywords). With source='openalex', keywords are OpenAlex's own. |

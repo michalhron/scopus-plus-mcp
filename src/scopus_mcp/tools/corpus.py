@@ -23,12 +23,15 @@ from ..baskets import (
     scope_scopus_query,
 )
 from ..completeness import RULE_TEXT, assess, external_reference_counts
+from ..field_flows import flow_matrix, has_levels, path_fields, summary_lines
 from ..graphs import _make_node_label
 from ..importers import apply_corpus_file
 from ..retractions import check_dois, status_of
 from ..lineage import WEIGHTS, compute_main_path, key_route_paths, main_path_robustness, write_pajek
 from ..openalex import bare_doi, clean_openalex_work, normalize_title, openalex_work_key, short_id
 from ..output import _output_dir, _query_slug
+from ..journal_cut import QUALITY_PROPS
+from ..topics import TOPIC_PROPS, reject_topics_for_scopus
 from ..records import (
     clean_abstract_details,
     clean_references,
@@ -46,7 +49,7 @@ from ..semantic_scholar import (
     clean_contexts,
     venue_issns,
 )
-from .common import SOURCE_SCHEMA, _resolve_openalex_work, _source, server_module
+from .common import SOURCE_SCHEMA, _resolve_openalex_work, _source, resolve_openalex_scope, server_module
 
 logger = logging.getLogger("scopus-plus-mcp")
 
@@ -129,7 +132,19 @@ TOOLS = [
                     "description": "A corpus file from import_records, instead of ids or query.",
                 },
                 "scope": SCOPE_SCHEMA,
+                **TOPIC_PROPS,
+                **QUALITY_PROPS,
                 "source": SOURCE_SCHEMA,
+                "flow_level": {
+                    "type": "string", "enum": ["field", "subfield"], "default": "field",
+                    "description": (
+                        "OpenAlex only. Level of the field-to-field citation matrix "
+                        "(citing field by cited field, share of within-field and "
+                        "cross-field citations, largest cross-field flows) and of the "
+                        "field labels on the main path. Computed from the records "
+                        "already fetched; no extra requests."
+                    ),
+                },
                 "key_routes": {
                     "type": "integer",
                     "description": (
@@ -426,6 +441,8 @@ def _node(rec, key):
         'venue': rec.get('publication_name'),
         'issn': rec.get('issn'),
         'cited_by_count': rec.get('cited_by_count'),
+        # OpenAlex only; Scopus records have no topic and get no such keys.
+        **{k: rec[k] for k in ('topic', 'subfield', 'field') if rec.get(k)},
     }
 
 
@@ -505,9 +522,20 @@ async def _collect_scopus(client, arguments):
     return nodes, fetch_errors, parse_errors, refs_by_id
 
 
-async def _collect_openalex(openalex, arguments):
+async def _collect_openalex(srv, arguments, report=None):
+    openalex = srv.openalex
     ids, query = arguments.get("ids"), arguments.get("query")
     issns = resolve_scope(arguments.get("scope"))
+    scoped = any(arguments.get(k) is not None for k in ('topics', 'min_percentile'))
+    if scoped and ids:
+        raise ValueError("topics and min_percentile filter a query; with ids, pass only "
+                         "in-scope papers.")
+    oa_scope = None
+    if not ids:
+        oa_scope = await resolve_openalex_scope(srv, arguments, query, issns)
+        if report is not None and oa_scope.lines:
+            report.update(oa_scope.info)
+            report['topic_scope_summary'] = oa_scope.summary
     works, fetch_errors, parse_errors = [], {}, {}
     if ids:
         for i in ids:
@@ -516,9 +544,8 @@ async def _collect_openalex(openalex, arguments):
             except Exception as exc:
                 fetch_errors[str(i)] = _err(exc)
     else:
-        kwargs = {'extra_filter': openalex_issn_filter(issns)} if issns else {}
         works, _ = await openalex.search(query, max_results=int(arguments.get("max_results", 300)),
-                                         sort='citedby', **kwargs)
+                                         sort='citedby', **oa_scope.kwargs)
     nodes, ref_ids = {}, {}
     for w in works:
         try:
@@ -536,10 +563,11 @@ async def _collect_openalex(openalex, arguments):
     return nodes, fetch_errors, parse_errors, ref_ids
 
 
-async def collect_corpus(srv, arguments):
+async def collect_corpus(srv, arguments, report=None):
     """(nodes, fetch_errors, parse_errors, references) for ids or a query.
     references: cleaned Scopus reference lists, or OpenAlex referenced-work
-    IDs, per paper."""
+    IDs, per paper. A `report` dict, when given, receives the resolved topic
+    scope."""
     arguments = apply_corpus_file(arguments, _source(arguments))
     ids, query = arguments.get("ids"), arguments.get("query")
     if bool(ids) == bool(query):
@@ -547,8 +575,9 @@ async def collect_corpus(srv, arguments):
     if ids and len(ids) > MAX_CORPUS:
         raise ValueError(f"At most {MAX_CORPUS} ids per call.")
     if _source(arguments) == 'openalex':
-        out = await _collect_openalex(srv.openalex, arguments)
+        out = await _collect_openalex(srv, arguments, report)
     else:
+        reject_topics_for_scopus(arguments)
         out = await _collect_scopus(srv.client, arguments)
     if not out[0]:
         raise ValueError("No papers found for the given ids or query.")
@@ -620,7 +649,8 @@ async def _citation_network(arguments: dict) -> list:
     k = int(arguments.get("key_routes", 10))
     check = arguments.get("check_completeness", True)
 
-    nodes, fetch_errors, parse_errors, _ = await collect_corpus(srv, arguments)
+    scope_report = {}
+    nodes, fetch_errors, parse_errors, _ = await collect_corpus(srv, arguments, scope_report)
     errors = {**fetch_errors, **parse_errors}
     missing = [key for key in nodes if key in errors]
 
@@ -669,6 +699,13 @@ async def _citation_network(arguments: dict) -> list:
             nodes, edges, set(zip(mp['global_main_path'], mp['global_main_path'][1:])),
             arguments.get("construct_terms") or [], int(arguments.get("max_context_edges") or 300),
             out / f'{base}-edge-coding.csv')
+    level = arguments.get("flow_level") or 'field'
+    if level not in ('field', 'subfield'):
+        raise ValueError("flow_level must be 'field' or 'subfield'")
+    flows = path_flow = None
+    if has_levels(nodes, level):
+        flows = flow_matrix(nodes, [(e['citing'], e['cited']) for e in edges], level)
+        path_flow = path_fields(mp['global_main_path'], nodes, level)
     corpus = {
         'source': source,
         'query': query,
@@ -688,6 +725,10 @@ async def _citation_network(arguments: dict) -> list:
         'completeness_rule': RULE_TEXT,
         'server_version': srv.SERVER_VERSION,
     }
+    corpus.update({k: v for k, v in scope_report.items() if k != 'topic_scope_summary'})
+    if flows:
+        corpus['field_flows'] = flows
+        corpus['main_path_fields'] = path_flow
     json_path = out / f'{base}.json'
     json_path.write_text(json.dumps(corpus, ensure_ascii=False, indent=2), encoding='utf-8')
     net_path = write_pajek(
@@ -702,6 +743,12 @@ async def _citation_network(arguments: dict) -> list:
         f"Citation network ({source}): {len(nodes)} papers, {len(edges)} within-set "
         f"citation edges, {len(isolated)} papers with no edge.",
     ]
+    if scope_report:
+        lines.insert(0, scope_report['topic_scope_summary'])
+    if flows:
+        lines += summary_lines(flows)
+        lines.append("Main path fields: " + ' → '.join(path_flow['route'])
+                     + f" ({len(path_flow['crossings'])} crossings).")
     if fetch_errors:
         lines.append(f"Reference lists that failed to load ({len(fetch_errors)}): " + '; '.join(
             f"{key} ({e[:90]})" for key, e in list(fetch_errors.items())[:10]))

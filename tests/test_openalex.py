@@ -99,7 +99,33 @@ def test_clean_openalex_work_shape():
         'publication_name': 'Social Networks', 'cover_date': '2020-01-01',
         'year': '2020', 'doi': '10.1234/abc', 'cited_by_count': 5,
         'type': 'article', 'source': 'openalex',
+        'topic_id': None, 'topic': None, 'subfield': None, 'field': None,
+        'domain': None, 'topic_score': None,
     }
+
+
+def test_clean_openalex_work_topic_fields():
+    work = _work('W1')
+    work['primary_topic'] = {
+        'id': 'https://openalex.org/T10346', 'display_name': 'Digital Transformation',
+        'score': 0.98,
+        'subfield': {'id': 'https://openalex.org/subfields/1710', 'display_name': 'Information Systems'},
+        'field': {'id': 'https://openalex.org/fields/17', 'display_name': 'Computer Science'},
+        'domain': {'id': 'https://openalex.org/domains/3', 'display_name': 'Physical Sciences'},
+    }
+    rec = clean_openalex_work(work)
+    assert (rec['topic_id'], rec['topic'], rec['subfield'], rec['field'], rec['domain'],
+            rec['topic_score']) == ('T10346', 'Digital Transformation', 'Information Systems',
+                                    'Computer Science', 'Physical Sciences', 0.98)
+
+
+def test_clean_openalex_work_unclassified_has_no_topic():
+    rec = clean_openalex_work({**_work('W2'), 'primary_topic': None})
+    assert rec['topic'] is None and rec['field'] is None
+
+
+def test_primary_topic_requested_in_work_fields():
+    assert 'primary_topic' in oa.WORK_FIELDS
 
 
 def test_clean_openalex_work_tolerates_missing_fields():

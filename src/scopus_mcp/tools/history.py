@@ -8,6 +8,8 @@ import mcp.types as types
 
 from .. import jobs
 from ..baskets import SCOPE_SCHEMA
+from ..journal_cut import QUALITY_PROPS
+from ..topics import TOPIC_PROPS
 from ..history import historiograph, render_historiograph_png, render_rpys_png, spectrogram
 from ..lineage import compute_main_path, write_pajek
 from ..openalex import clean_openalex_work, short_id
@@ -27,6 +29,8 @@ CORPUS_PROPS = {
     "max_results": {"type": "integer", "default": 300,
                     "description": "With query: how many papers to include (default 300)."},
     "scope": SCOPE_SCHEMA,
+    **TOPIC_PROPS,
+    **QUALITY_PROPS,
     "source": SOURCE_SCHEMA,
 }
 
@@ -108,7 +112,8 @@ async def _cited_references(srv, arguments, references):
 
 async def _rpys(arguments: dict) -> list:
     srv = server_module()
-    nodes, fetch_errors, parse_errors, references = await collect_corpus(srv, arguments)
+    scope_report = {}
+    nodes, fetch_errors, parse_errors, references = await collect_corpus(srv, arguments, scope_report)
     refs = await _cited_references(srv, arguments, references)
     from_year = int(arguments.get("from_year") or 1900)
     to_year = int(arguments.get("to_year") or date.today().year)
@@ -126,7 +131,7 @@ async def _rpys(arguments: dict) -> list:
     png = render_rpys_png(spec, out / f'{base}.png',
                           f"RPYS: {len(nodes)} citing papers, {spec['n_references']} cited references")
     missing = {**fetch_errors, **parse_errors}
-    lines = [
+    lines = ([scope_report['topic_scope_summary']] if scope_report else []) + [
         f"RPYS of {len(nodes)} papers ({_source(arguments)}): {spec['n_references']} cited "
         f"references dated {from_year}-{to_year}; {spec['undated']} without a year.",
         f"Server version: {srv.SERVER_VERSION}",
@@ -148,7 +153,8 @@ async def _rpys(arguments: dict) -> list:
 
 async def _historiograph(arguments: dict) -> list:
     srv = server_module()
-    nodes, fetch_errors, parse_errors, _ = await collect_corpus(srv, arguments)
+    scope_report = {}
+    nodes, fetch_errors, parse_errors, _ = await collect_corpus(srv, arguments, scope_report)
     source = _source(arguments)
     records = [dict(n, scopus_id=n['id'] if source == 'scopus' else None,
                     openalex_id=n['id'] if source == 'openalex' else None) for n in nodes.values()]
@@ -166,7 +172,7 @@ async def _historiograph(arguments: dict) -> list:
     json_path.write_text(json.dumps({**hist, 'main_path': main_path}, ensure_ascii=False, indent=2),
                          encoding='utf-8')
     on_path = [n for n in hist['nodes'] if n['id'] in set(main_path)]
-    lines = [
+    lines = ([scope_report['topic_scope_summary']] if scope_report else []) + [
         f"Historiograph of {len(nodes)} papers ({source}): the {len(hist['nodes'])} most cited within "
         f"the set, {len(hist['edges'])} citations among them; {len(on_path)} of the "
         f"{len(main_path)} global main-path papers are among them.",

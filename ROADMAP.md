@@ -4,7 +4,51 @@ Single living plan for the `michalhron/scopus-mcp` fork. Replaces the
 2026-06-24 roadmap and the 2026-06-25 addendum; their research-design content
 is kept verbatim under "Research design" below.
 
-_Last updated: 2026-09-30._
+_Last updated: 2026-10-11._
+
+## Where to pick up
+
+Branch `feature/openalex-topics`, draft PR #28 (OpenAlex topics, the quality
+cut, `topic_profile`, field flows, OpenAlex-only operation). Updated 2026-10-11.
+
+**State.** The server starts without a Scopus key; Scopus tools then fail with
+one message that names the missing key and points to `source='openalex'`. Of 36
+tools, 29 run on OpenAlex alone (checked live with no Scopus key). The rest are
+in "OpenAlex-only operation" below, ranked by effort.
+
+**Next, in order.**
+1. Explicit error for tools that silently ignore `source='openalex'`; clean
+   refusal for `search_fulltext` (easy, one shared helper).
+2. `topic_landscape` from OpenAlex `group_by`, `index_coverage` guard,
+   `import_records` fallback (medium).
+3. Scopus-ID inputs: resolve once to a DOI, cache, skip per item when Scopus
+   is down (medium, touches six tools).
+4. Decide `find_journals` without CiteScore (hard: a decision, not code).
+5. Live check still open: `set-key` on Windows and Linux.
+6. PR #28 is ready for review; the PR body lists six design decisions.
+
+**Resume.**
+
+```bash
+cd ~/scopus-mcp && git checkout feature/openalex-topics && git pull
+uv run pytest -q                       # offline suite
+# every tool once with no Scopus key (needs network and OPENALEX_API_KEY):
+env -u SCOPUS_API_KEY SCOPUS_DISABLE_SECRET_STORE=1 \
+  uv run python scripts/smoke_openalex_only.py [tool ...]
+# live topic tests (needs SCOPUS_API_KEY and OPENALEX_API_KEY):
+uv run pytest -m integration tests/test_integration_topics.py
+```
+
+**Facts worth remembering.**
+- OpenAlex budget: $0.10 per day anonymous, $1 with a free key. One quality cut
+  on a 45,000-paper corpus costs about $0.10 and 4 minutes. The key is read from
+  `OPENALEX_API_KEY`, the Keychain (`uv run scopus-plus-mcp set-key
+  openalex_api_key`) or `config.json`; today it sits in the Claude Desktop
+  config under the `scopus-assistant` entry.
+- OpenAlex `group_by` returns page 1 only, 200 groups at most. Anything that
+  needs more must split the query (the quality cut splits by year, then month).
+- The topics test fixtures are hand-built, not recorded live. `tests/conftest.py`
+  removes `OPENALEX_API_KEY` from every test; the live tests restore it.
 
 ## Status
 
@@ -204,6 +248,86 @@ co-authorship and country networks and altmetrics (not lineage questions).
 
 Orchestrator skill (Session D below) and the lineage-model ideas. Mostly
 skill-side, so independent of distribution.
+
+## OpenAlex-only operation (planned 2026-10-11)
+
+Goal: every tool that can run on OpenAlex does, and the server works when
+Scopus is down or not subscribed. Audit of the 36 tools by reading the code,
+then a live run with no Scopus key.
+
+**Done (2026-10-11)**
+- [x] Start without a Scopus key (`client.py`, `server.py`); test in
+      `tests/test_client_no_key.py` and `tests/test_extension.py`;
+      `scripts/smoke_openalex_only.py` calls every tool live. `docs/configuration.md`
+      says `SCOPUS_API_KEY` is needed for Scopus tools only.
+- [x] `get_abstract_details`, `resolve_identifier`: DOIs and `W...` IDs through
+      OpenAlex; Scopus IDs stay on Scopus.
+- [x] `get_author_profile`: OpenAlex author ID or ORCID.
+- [x] `get_quota_status` shows the OpenAlex daily budget; `diagnose_connection`
+      shows the OpenAlex key source.
+- [x] `set-key` command; live check of the quality-cut year and month split.
+- Run on OpenAlex alone: `search_all`, `search_authors`, `get_references`,
+  `get_citing_papers`, `bibliographic_coupling`, `co_citation`,
+  `citation_lineage`, `citation_network`, `resolve_citers`, `rpys`,
+  `historiograph`, `research_fronts`, `thematic_evolution`,
+  `publication_counts`, `get_journal_metrics` (ISSNs only), `topic_profile`,
+  `get_fulltext` (open access tier), `check_retractions` (DOIs),
+  `coding_agreement`, `get_bibtex` (DOIs), `citation_context` (DOIs), plus
+  `diagnose_connection`, `get_server_info`, `job_status`, `job_result`.
+
+**Easy**
+- [ ] Tools without a `source` field (`search_scopus`, `topic_landscape`,
+      `index_coverage`, `find_journals`, `search_fulltext`) silently ignore
+      `source='openalex'`. Return an explicit error, as `topic_profile` does
+      (`tools/profile.py:67`); one helper in `tools/common.py`.
+- [ ] `search_fulltext` is ScienceDirect only. Refuse cleanly under OpenAlex, or
+      try OpenAlex's `fulltext.search` filter; check live that it exists and
+      what share of a field it covers before promising it.
+- [ ] One table in `docs/data-sources.md`: tool by source and what differs
+      (author affiliation filter is post-hoc on the top 25 name matches;
+      `citation_lineage` refuses `sort='relevancy'`; `get_journal_metrics`
+      takes ISSNs only).
+
+**Medium**
+- [ ] `topic_landscape`: Scopus facets today (`bibliometrics.py:326`). Build it
+      from OpenAlex `group_by` on topics and fields; `topic_profile` does most
+      of it, so this may be a thin wrapper with the Scopus output shape.
+- [ ] `index_coverage`: the Scopus REF side is unguarded (`transmission.py:294`),
+      so one Scopus error aborts the call. Return the OpenAlex and Semantic
+      Scholar sets and mark the Scopus column unavailable.
+- [ ] `import_records`: `resolve` defaults to Scopus and aborts on error
+      (`imports.py:61-79`). Fall back to DOI matching and OpenAlex.
+- [ ] Scopus-ID inputs: `get_bibtex`, `citation_context`, `path_transmission`,
+      `check_retractions`, and the ID path of `get_references`,
+      `get_citing_papers` and `citation_network` call Scopus to turn a Scopus
+      ID into a DOI (`tools/common.py:54-67`). Resolve once, cache the mapping,
+      and when Scopus is down skip that input with a per-item message.
+      `citation_context`, `path_transmission` and `get_bibtex` need a `source`
+      parameter.
+- [ ] `diagnose_connection`: add an OpenAlex reachability and budget check (a
+      free request, then the `x-ratelimit-*` headers).
+- [ ] Budget guard: before a request-heavy step (quality-cut split, large
+      `citation_network`), report the estimate and the remaining daily budget
+      instead of running into a 429.
+
+**Hard (a decision, not just code)**
+- [ ] `find_journals` selects by CiteScore percentile inside a Scopus category;
+      OpenAlex has no field-relative percentile. Either rank by 2-year mean
+      citedness within an OpenAlex topic or subfield, labelled as not
+      comparable to CiteScore, or refuse. Decide first.
+- [ ] Quality cut without Scopus: needs Scopus Serial Title data; the design
+      decision was to refuse. Revisit only if a field-relative OpenAlex measure
+      appears.
+- `search_scopus` uses Scopus query syntax and has no OpenAlex equivalent;
+  `search_all(source='openalex')` replaces it. Leave as is.
+
+**Live checks not yet run**
+- [x] (2026-10-11) `--lanes-by-field`, OR-cap chunking (120 ISSNs: 368 papers
+      = 23 + 69 + 276), `topic_match` (any 8,171 vs primary 4,690) and
+      `work_types`: all pass live. Two bugs fixed on the way: papers without a
+      year stretched the plot axis to 0, and unknown work types returned 0
+      silently.
+- [ ] `set-key` on Windows and Linux; CI only covers the argument handling.
 
 ## Release process
 

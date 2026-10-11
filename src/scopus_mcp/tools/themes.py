@@ -8,7 +8,8 @@ from pathlib import Path
 import mcp.types as types
 
 from .. import jobs
-from ..baskets import openalex_issn_filter, resolve_scope, scope_scopus_query
+from ..baskets import resolve_scope, scope_scopus_query
+from ..topics import reject_topics_for_scopus
 from ..importers import load_corpus_file
 from ..openalex import clean_openalex_work, short_id
 from ..output import _output_dir
@@ -23,7 +24,7 @@ from ..themes import (
     render_strategic_png,
     track_construct,
 )
-from .common import _resolve_openalex_work, _source, server_module
+from .common import _resolve_openalex_work, _source, resolve_openalex_scope, server_module
 from .corpus import MAX_CORPUS, REF_CONCURRENCY, _base_name, _scopus_records_for
 from .history import CORPUS_PROPS
 
@@ -118,15 +119,23 @@ async def _collect_scopus_docs(client, arguments, mode):
     return docs
 
 
-async def _collect_openalex_docs(openalex, arguments, mode):
+async def _collect_openalex_docs(srv, arguments, mode, report=None):
+    openalex = srv.openalex
     ids, query = arguments.get("ids"), arguments.get("query")
     issns = resolve_scope(arguments.get("scope"))
+    if ids and any(arguments.get(k) is not None for k in ('topics', 'min_percentile')):
+        raise ValueError("topics and min_percentile filter a query; with ids, pass only "
+                         "in-scope papers.")
+    oa_scope = None
+    if not ids:
+        oa_scope = await resolve_openalex_scope(srv, arguments, query, issns)
+        if report is not None and oa_scope.lines:
+            report['summary'] = oa_scope.summary
     if ids:
         works = [await _resolve_openalex_work(i) for i in ids]
     else:
-        kwargs = {'extra_filter': openalex_issn_filter(issns)} if issns else {}
         works, _ = await openalex.search(query, max_results=int(arguments.get("max_results", 300)),
-                                         sort='citedby', **kwargs)
+                                         sort='citedby', **oa_scope.kwargs)
     by_id = {short_id(w['id']): w for w in works}
     details = {short_id(w['id']): w for w in await openalex.works_by_ids(
         list(by_id), select='id,title,keywords,abstract_inverted_index')}
@@ -179,12 +188,14 @@ async def _thematic_evolution(arguments: dict) -> list:
     if mode not in TERM_MODES:
         raise ValueError(f"terms must be one of {', '.join(TERM_MODES)}")
     source = _source(arguments)
+    scope_report = {}
     if from_file:
         source = 'corpus file'
         docs = _docs_from_file(load_corpus_file(from_file), mode)
     elif source == 'openalex':
-        docs = await _collect_openalex_docs(srv.openalex, arguments, mode)
+        docs = await _collect_openalex_docs(srv, arguments, mode, scope_report)
     else:
+        reject_topics_for_scopus(arguments)
         docs = await _collect_scopus_docs(srv.client, arguments, mode)
     if not docs:
         raise ValueError("No dated papers found for the given ids or query.")
@@ -228,7 +239,7 @@ async def _thematic_evolution(arguments: dict) -> list:
     kinds = {}
     for d in docs:
         kinds[d['kind']] = kinds.get(d['kind'], 0) + 1
-    lines = [f"Thematic evolution of {len(docs)} papers ({source}; terms: {mode}; "
+    lines = ([scope_report['summary']] if scope_report else []) + [f"Thematic evolution of {len(docs)} papers ({source}; terms: {mode}; "
              + ', '.join(f"{k} {v}" for k, v in sorted(kinds.items())) + ").",
              f"Server version: {srv.SERVER_VERSION}",
              f"JSON: {json_path}", f"CSV: {csv_path}"]

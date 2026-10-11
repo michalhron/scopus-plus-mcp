@@ -92,20 +92,23 @@ def test_registry_entry_matches_package():
     assert package['identifier'] == project_name
     assert f"mcp-name: {registry['name']}" in (ROOT / readme).read_text(encoding='utf-8')
     required = {e['name'] for e in package['environmentVariables'] if e['isRequired']}
-    assert required == {'SCOPUS_API_KEY'}  # the server does not start without it
+    assert required == {"SCOPUS_API_KEY"}  # kept required in the extension form; the server itself starts without it (OpenAlex-only use)
 
 
-def test_missing_key_exits_cleanly():
-    """No traceback for a first-time user without a key: a message and exit 1."""
+def test_server_imports_without_a_scopus_key():
+    """OpenAlex-only use: the server loads with no Scopus key and names the
+    missing key only when a Scopus call is made."""
     import subprocess
     import sys
     env = {k: v for k, v in os.environ.items() if k != 'SCOPUS_API_KEY'}
     env['SCOPUS_DISABLE_SECRET_STORE'] = '1'
+    code = ("from scopus_mcp import server; "
+            "assert server.client.api_key is None; "
+            "print(server.client.missing_key_message)")
     result = subprocess.run(
-        [sys.executable, '-c', 'from scopus_mcp.cli import main; main()'],
+        [sys.executable, '-c', code],
         env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60,
     )
-    assert result.returncode == 1
-    assert 'Scopus API Key not found' in result.stderr
-    assert '#install' in result.stderr
+    assert result.returncode == 0, result.stderr
+    assert 'Scopus API Key not found' in result.stdout
     assert 'Traceback' not in result.stderr

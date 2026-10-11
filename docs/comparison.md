@@ -71,7 +71,10 @@ Corrections are welcome as issues.
 - **Review scoping by field and prestige.** It is the only one that reports
   journal percentiles per subject category, lists the journals above a
   percentile cut-off in chosen categories as a ready Scopus query, and maps
-  where a topic is published and in which quartile per field.
+  where a topic is published and in which quartile per field. On OpenAlex it
+  also applies that percentile cut inside a corpus defined by OpenAlex topics,
+  so one corpus can span several fields, and reports which fields carry the
+  debate and how they cite each other.
 - **Full-text engagement.** Besides searching full text, it counts how often
   and where each article uses a term, separating use from citation.
 - **Two data sources.** Everything from search to lineage also runs on

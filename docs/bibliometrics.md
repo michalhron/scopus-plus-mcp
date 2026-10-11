@@ -30,6 +30,16 @@ separately with book series. Large topics are analysed on a sample of up to
 (`sample="cited"`) to see where influential work appears. The reply states
 the coverage.
 
+`topic_profile` answers the same question for OpenAlex, by discipline. For a
+title-and-abstract query it reports papers and shares by field, subfield and
+topic (top 20 by default), and per year by field. It names the first year in
+which each field made up at least 5% of that year's papers (`share_threshold`
+changes the 5%), so you can see when a discipline joined the debate. It takes
+`topics`, `scope` and the quality cut below, and counts articles, reviews,
+books and book chapters unless `work_types="all"`. It uses grouped requests,
+four plus one per year in the range, and never one per paper. It writes a
+JSON file and a field-by-year CSV.
+
 ## Which journals clear the bar
 
 `find_journals` lists the journals in one or more Scopus subject categories
@@ -44,6 +54,41 @@ their years, plus subject areas, for up to 200 journals by ISSN or Scopus
 source ID. With `source="openalex"` it returns OpenAlex's own measures
 (2-year mean citedness, h-index, i10-index) and needs no subscription.
 Journals that are not found are listed in the reply.
+
+### A quality cut across fields
+
+A single journal list cannot serve a corpus that spans information systems,
+strategy and marketing. A top marketing journal and a top IS journal sit in
+different Scopus categories with different citation norms. On OpenAlex,
+`min_percentile` applies the bar inside each journal's own category.
+
+It works in four steps. First one grouped request finds the venues the corpus
+appears in. Then OpenAlex gives their ISSNs and Scopus gives their CiteScore
+percentiles per category. A journal is kept when its percentile is at or above
+`min_percentile`. `percentile_rule="best"` (the default) uses its best
+category and is generous to multidisciplinary journals. `"all"` needs the
+bar in every category the journal is listed in. `categories` restricts which
+Scopus categories count. Last, the search runs again on the kept journals, in
+chunks of 50.
+
+`min_percentile=0` keeps every journal Scopus indexes and nothing else, a
+floor that removes most junk venues. The reply lists journals kept and
+dropped with their percentile and category, the share of the corpus the cut
+removed, and every venue with no CiteScore. Those venues are listed, never
+silently dropped or kept. A CSV holds all of them with their status.
+
+Conference proceedings have no journal CiteScore, so the cut drops them, and
+the reply says how many papers that was. ICIS, ECIS and HICSS matter in IS.
+`include_venues` takes ISSNs or OpenAlex source IDs that bypass the cut.
+
+The cut needs the Scopus Serial Title API. Without it the cut refuses and
+says so. OpenAlex's own journal measures cannot stand in. Mean citedness
+differs by field by an order of magnitude, and a fair percentile would need
+every source in each journal's field. A journal list you trust, passed as
+`scope`, works without Scopus.
+
+Request cost: one OpenAlex request per 200 venues, one per 50 for their
+ISSNs, one Scopus request per 25 ISSNs, then the search itself.
 
 ## Themes over time
 

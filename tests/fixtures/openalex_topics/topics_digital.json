@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "count": 0,
+    "page": 1,
+    "per_page": 200
+  },
+  "results": [
+    {
+      "id": "https://openalex.org/T10346",
+      "display_name": "Digital Transformation in Business"
+    },
+    {
+      "id": "https://openalex.org/T12345",
+      "display_name": "Digital Transformation"
+    },
+    {
+      "id": "https://openalex.org/T10347",
+      "display_name": "Digital Platforms and Ecosystems"
+    }
+  ]
+}

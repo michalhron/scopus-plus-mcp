@@ -8,6 +8,9 @@ Usage:
 lanes.json (optional), written by you after reading the papers on the path:
   {"order": ["Lane name 1", "Lane name 2"], "assign": {"<paper id>": "Lane name 1", ...}}
 Papers without a lane go to the first lane.
+
+--lanes-by-field (OpenAlex corpora): one lane per OpenAlex field (or subfield, --lanes-by-field subfield) on
+the path, in order of first appearance, so you see where the path crosses disciplines.
 """
 import argparse, json, re
 import matplotlib
@@ -19,7 +22,8 @@ BLUE, PALE, TEXT, MUTED, GOLD = "#1E64C8", "#F3F6FA", "#1E293B", "#64748B", "#9A
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--corpus", required=True); ap.add_argument("--result", required=True); ap.add_argument("--out", default="map.png")
-ap.add_argument("--lanes"); ap.add_argument("--highlight"); ap.add_argument("--highlight-label", default="Highlighted papers")
+ap.add_argument("--lanes"); ap.add_argument("--lanes-by-field", nargs="?", const="field", choices=["field", "subfield"])
+ap.add_argument("--highlight"); ap.add_argument("--highlight-label", default="Highlighted papers")
 ap.add_argument("--title", default="Main path"); ap.add_argument("--font", default="DejaVu Sans")
 a = ap.parse_args()
 plt.rcParams["font.family"] = a.font
@@ -30,12 +34,16 @@ yr = lambda i: int(float(papers[i].get("year") or 0))
 path, labels = res["main_path"], res["main_path_labels"]
 lanes = {"order": ["Main path"], "assign": {}}
 if a.lanes: lanes = json.load(open(a.lanes, encoding="utf-8"))
+if a.lanes_by_field:
+    assign = {i: papers[i].get(a.lanes_by_field) or "Unclassified" for i in path}
+    lanes = {"order": list(dict.fromkeys(assign[i] for i in path)), "assign": assign}
 order = list(lanes["order"]) + (["__hl"] if a.highlight else [])
 lane_y = {name: len(order) - 1 - i for i, name in enumerate(order)}
 ly = lambda i: lane_y.get(lanes["assign"].get(i, lanes["order"][0]), lane_y[lanes["order"][0]])
 
 fig, ax = plt.subplots(figsize=(12, 1.6 + 1.4 * len(order)), dpi=200)
-y0, y1 = min(map(yr, papers)), max(map(yr, papers))
+dated = [yr(i) for i in papers if yr(i) > 0]  # a paper without a year must not stretch the axis to year 0
+y0, y1 = min(dated), max(dated)
 for name, y in lane_y.items():
     ax.axhspan(y - 0.5, y + 0.5, color=PALE if y % 2 else "white", lw=0, zorder=0)
     ax.text(y0 - 0.5, y + 0.38, (a.highlight_label if name == "__hl" else name).upper(), fontsize=9, fontweight="bold",
@@ -54,7 +62,7 @@ for n, (i, lab) in enumerate(zip(path, labels)):
     ax.annotate(lab, pos[i], xytext=(0, dy), textcoords="offset points", ha="center",
                 va="bottom" if dy > 0 else "top", fontsize=8.5, fontweight="bold", color=TEXT)
 if a.highlight:
-    rx = re.compile(a.highlight, re.I); hl = [i for i, p in papers.items() if rx.search(p.get("title") or "")]
+    rx = re.compile(a.highlight, re.I); hl = [i for i, p in papers.items() if yr(i) > 0 and rx.search(p.get("title") or "")]
     for j, i in enumerate(hl):
         ax.scatter(yr(i) + ((j * 37) % 100) / 100 * 0.8 - 0.4, lane_y["__hl"] - 0.25 + ((j * 53) % 100) / 100 * 0.4,
                    s=18, facecolor="white", edgecolor=MUTED, lw=0.8, zorder=3)

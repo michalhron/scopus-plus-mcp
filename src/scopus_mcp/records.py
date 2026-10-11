@@ -386,3 +386,53 @@ def clean_references(data: Dict[str, Any], limit: Optional[int] = None) -> List[
     if limit is not None:
         return cleaned[:limit]
     return cleaned
+
+
+def clean_openalex_abstract_details(work: Dict[str, Any]) -> Dict[str, Any]:
+    """Abstract-details record from an OpenAlex work (fields as in
+    clean_abstract_details, plus openalex_id)."""
+    source = ((work.get('primary_location') or {}).get('source') or {})
+    abstract = _reconstruct_abstract_from_openalex(work.get('abstract_inverted_index') or {})
+    doi = (work.get('doi') or '').replace('https://doi.org/', '') or None
+    authors = [(a.get('author') or {}).get('display_name')
+               for a in (work.get('authorships') or [])]
+    return {
+        'openalex_id': (work.get('id') or '').rsplit('/', 1)[-1] or None,
+        'scopus_id': None,
+        'doi': doi,
+        'title': work.get('title'),
+        'description': abstract or None,
+        'abstract_source': 'openalex' if abstract else 'none',
+        'publication_name': source.get('display_name'),
+        'cover_date': work.get('publication_date'),
+        'cited_by_count': work.get('cited_by_count'),
+        'authors': [a for a in authors if a],
+        'url': work.get('id'),
+        'source': 'openalex',
+    }
+
+
+def clean_openalex_identifiers(work: Dict[str, Any]) -> Dict[str, Any]:
+    """Cross-reference identifier set from an OpenAlex work. OpenAlex carries
+    no Scopus ID or EID, so those stay None."""
+    ids = work.get('ids') or {}
+    source = ((work.get('primary_location') or {}).get('source') or {})
+
+    def tail(v):
+        return v.rsplit('/', 1)[-1] if v else None
+
+    return {
+        'openalex_id': tail(work.get('id')),
+        'scopus_id': None,
+        'eid': None,
+        'doi': (work.get('doi') or ids.get('doi') or '').replace('https://doi.org/', '') or None,
+        'pii': None,
+        'pubmed_id': tail(ids.get('pmid')),
+        'pmcid': tail(ids.get('pmcid')),
+        'title': work.get('title'),
+        'publication_name': source.get('display_name'),
+        'cover_date': work.get('publication_date'),
+        'cited_by_count': work.get('cited_by_count'),
+        'source': 'openalex',
+        'note': 'OpenAlex carries no Scopus ID or EID.',
+    }

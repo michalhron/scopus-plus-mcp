@@ -42,6 +42,27 @@ For information-systems research built on AIS conference literature (ICIS,
 AMCIS, ECIS, PACIS), use Scopus for anything that needs reference lists.
 Journal-based analyses work on both.
 
+## OpenAlex topics changed in October 2026
+
+On 6 October 2026 OpenAlex replaced its topic classifier. The 4,516 topics,
+their IDs and names, and the hierarchy of 252 subfields, 26 fields and 4
+domains did not change. Only the assignment of works to topics did. The new
+classifier reads title, abstract and venue name, and no citations.
+
+Three things follow for this server:
+
+- Topic results from before 6 October 2026 differ from results after it. A
+  corpus built on topics in September cannot be rebuilt exactly now.
+- The old assignments are frozen in the v2.0.0 release of
+  `ourresearch/openalex-topic-classification`. The old tagger stays on
+  `/text/topics?version=1` until 13 January 2027.
+- Datasets, specimens, proposals and similar records now get topics. Counts
+  that should cover papers need a type filter, which is why `topics` and
+  `topic_profile` default to articles, reviews, books and book chapters.
+
+Records OpenAlex cannot classify have no topic. The server leaves their topic
+fields empty.
+
 ## OpenAlex budget
 
 OpenAlex bills per request: single-record lookups are free, list pages cost 1

@@ -1,7 +1,12 @@
 """Shared tool helpers: source switch, OpenAlex resolution, CSV output."""
+from dataclasses import dataclass, field
 from datetime import datetime as _today_datetime
+from typing import Any, Dict, List, Optional
 
-from ..openalex import openalex_work_key
+from ..baskets import openalex_issn_filter
+from ..journal_cut import apply_quality_cut
+from ..openalex import FilterParts, _search_value, and_filters, openalex_work_key
+from ..topics import build_topic_scope, parse_work_types
 from ..output import _output_dir
 from ..records import clean_abstract_details, to_scopus_id
 
@@ -94,3 +99,65 @@ def _write_rows_csv(rows: list, prefix: str):
         writer.writeheader()
         writer.writerows(flat)
     return path
+
+
+@dataclass
+class OpenAlexScope:
+    """Everything a tool needs to search OpenAlex inside a topic, scope and
+    quality cut: the extra filter, the lines that report it, and the parts."""
+    extra_filter: FilterParts = None
+    lines: List[str] = field(default_factory=list)
+    info: Dict[str, Any] = field(default_factory=dict)
+    topic_scope: Any = None
+    cut: Any = None
+
+    @property
+    def kwargs(self) -> dict:
+        return {'extra_filter': self.extra_filter} if self.extra_filter else {}
+
+    @property
+    def summary(self) -> str:
+        return '\n'.join(self.lines)
+
+
+async def resolve_openalex_scope(srv, arguments: dict, query: Optional[str],
+                                 issns: Optional[List[str]],
+                                 base_extra: Optional[str] = None,
+                                 default_types: bool = False) -> OpenAlexScope:
+    """Topic scope, journal scope and quality cut as one OpenAlex filter.
+
+    base_extra (e.g. a year range) narrows the venue discovery of the quality
+    cut the same way the search will be narrowed. The quality cut needs a
+    query and finds the venues first, so it adds requests (see QUALITY_PROPS).
+    """
+    topic_scope = await build_topic_scope(srv.openalex, arguments, types_alone=default_types)
+    scope_part = openalex_issn_filter(issns) if issns else None
+    topic_part = topic_scope.filter if topic_scope else None
+    out = OpenAlexScope(topic_scope=topic_scope)
+    if default_types and not topic_scope:
+        # Tools that count papers filter record types even without topics.
+        kept_types = parse_work_types(arguments.get("work_types"))
+        topic_part = ('type:' + '|'.join(kept_types)) if kept_types else None
+        out.lines.append("Record types: " + (', '.join(kept_types) if kept_types else 'all') + ".")
+        out.info['work_types'] = kept_types or 'all'
+    if topic_scope:
+        out.lines.append(topic_scope.report())
+        out.info['topic_scope'] = topic_scope.as_dict()
+    cut_filter = None
+    if arguments.get("min_percentile") is not None:
+        if not query:
+            raise ValueError("min_percentile needs a query to find the venues of.")
+        corpus = and_filters(f'title_and_abstract.search:{_search_value(query)}',
+                             base_extra, scope_part, topic_part)
+        cut_filter, out.cut = await apply_quality_cut(srv.openalex, srv.client, corpus, arguments)
+        out.cut.csv_path = str(_write_rows_csv(out.cut.rows, 'quality-cut'))
+        out.lines.append(out.cut.report())
+        out.info['quality_cut'] = out.cut.as_dict()
+    elif any(arguments.get(k) for k in ('percentile_rule', 'categories', 'include_venues')):
+        raise ValueError("percentile_rule, categories and include_venues apply together "
+                         "with min_percentile.")
+    # The cut's source-ID filter already sits inside scope and topic, so the
+    # search needs only the cut plus the topic's type filter.
+    out.extra_filter = and_filters(cut_filter, topic_part) if cut_filter else \
+        and_filters(scope_part, topic_part)
+    return out

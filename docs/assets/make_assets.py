@@ -271,14 +271,14 @@ FAMILIES = [  # icon, short name, two-line description, tools (from scripts/gen_
      ['resolve_citers', 'citation_context', 'path_transmission', 'coding_agreement', 'index_coverage',
       'check_retractions']),
     ('bibliometrics', 'Bibliometrics', ('counts, journals,', 'themes, BibTeX'),
-     ['publication_counts', 'topic_landscape', 'thematic_evolution', 'get_journal_metrics', 'find_journals',
-      'get_bibtex', 'import_records']),
+     ['publication_counts', 'topic_landscape', 'topic_profile', 'thematic_evolution', 'get_journal_metrics',
+      'find_journals', 'get_bibtex', 'import_records']),
     ('diagnostics', 'Diagnostics', ('access, quota,', 'background jobs'),
      ['diagnose_connection', 'get_quota_status', 'get_server_info', 'job_status', 'job_result']),
 ]
 OPENALEX = {'search_all', 'search_authors', 'get_references', 'get_citing_papers', 'bibliographic_coupling',
             'co_citation', 'citation_lineage', 'citation_network', 'historiograph', 'rpys', 'research_fronts',
-            'resolve_citers', 'publication_counts', 'thematic_evolution', 'get_journal_metrics'}
+            'resolve_citers', 'publication_counts', 'thematic_evolution', 'get_journal_metrics', 'topic_profile'}
 
 
 def tile(name):
@@ -356,9 +356,9 @@ def make_banner():
 
 # ---------------------------------------------------------------- tool map
 def make_tool_map():
-    doc = Doc(1200, 690, "35 tools in six families")
+    doc = Doc(1200, 690, "36 tools in six families")
     frame(doc)
-    kicker(doc, 40, 62, "35 TOOLS  ·  6 FAMILIES")
+    kicker(doc, 40, 62, "36 TOOLS  ·  6 FAMILIES")
     doc.text(40, 114, "From a query to a verified, measured map of a field.", 34, font='serif', fill=WHITE)
     cw, ch, gx, gy, x0, y0 = 362, 236, 17, 20, 40, 150
     for i, (ic, name, desc, tools) in enumerate(FAMILIES):

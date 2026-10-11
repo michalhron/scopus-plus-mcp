@@ -18,6 +18,7 @@ from .config import (
     get_proxy,
     proxy_scheme,
     resolve_api_key,
+    resolve_openalex_key,
     resolve_insttoken,
 )
 from .cache import CacheManager
@@ -145,7 +146,17 @@ class ScopusClient:
     Handles authentication, caching, rate limiting, and retries.
     """
     def __init__(self):
-        self.api_key = get_api_key()
+        # A missing key must not stop the server: the OpenAlex tools never use
+        # Scopus. Scopus calls raise the same message instead (see _request).
+        try:
+            self.api_key: Optional[str] = get_api_key()
+            self.missing_key_message: Optional[str] = None
+        except ValueError as exc:
+            self.api_key = None
+            self.missing_key_message = (
+                f"{exc} Tools that need Scopus cannot run without it; with "
+                "source='openalex' the search, citation, network and counting "
+                "tools work without Scopus.")
         self.cache_config = get_cache_config()
         # Per-request page size for search_all; 25 by default (see get_page_size).
         self.page_size = get_page_size()
@@ -157,10 +168,11 @@ class ScopusClient:
         self.max_retries = get_max_retries()
         self.rate_limit_retries = get_rate_limit_retries()
         self.headers = {
-            'X-ELS-APIKey': self.api_key,
             'Accept': 'application/json',
             'User-Agent': USER_AGENT,
         }
+        if self.api_key:
+            self.headers['X-ELS-APIKey'] = self.api_key
         if insttoken:
             self.headers['X-ELS-Insttoken'] = insttoken
         # Log where credentials came from, never their values.
@@ -197,6 +209,8 @@ class ScopusClient:
         Internal method to handle API requests with caching, rate limiting, and retries.
         json_body is sent as a JSON request body (ScienceDirect search is a PUT).
         """
+        if not self.api_key:
+            raise ValueError(self.missing_key_message)
         url = urljoin(BASE_URL, endpoint)
         # GET and PUT are idempotent: safe to cache and to replay. Elsevier
         # uses PUT for ScienceDirect search, so the body is part of the key.
@@ -937,8 +951,16 @@ class ScopusClient:
             'api_key_source': api_key_source,
             'insttoken_present': self.has_insttoken,
             'insttoken_source': self.insttoken_source,
+            'openalex_key_present': bool(resolve_openalex_key()[0]),
+            'openalex_key_source': resolve_openalex_key()[1],
             'proxy': proxy_scheme(self.proxy),
         }
+
+        if not self.api_key:
+            report['verdict'] = (
+                "No Scopus key: the Scopus tools are unavailable. Tools with "
+                "source='openalex' still work. " + (self.missing_key_message or ''))
+            return report
 
         # 2. Reachability: any HTTP status counts as reachable; only
         # transport errors/timeouts do not.  Behind a proxy the direct TCP

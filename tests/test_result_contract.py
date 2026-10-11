@@ -262,3 +262,15 @@ class TestServerSearchAllDispatch(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as td:
             result = await self._dispatch(raw, tmp_dir=td)
             self.assertEqual(result[0].text.strip(), '[]')
+
+
+def test_csv_gets_topic_columns_only_for_records_that_have_them(tmp_path, monkeypatch):
+    import csv
+    from scopus_mcp.output import write_results_to_disk
+    monkeypatch.setenv('SCOPUS_MCP_OUTPUT_DIR', str(tmp_path))
+    plain = write_results_to_disk([{'title': 'a'}], 'q')
+    topical = write_results_to_disk(
+        [{'title': 'a', 'topic_id': 'T1', 'topic': 'X', 'field': 'F'}], 'q2')
+    head = lambda p: next(csv.reader(open(p, encoding='utf-8')))
+    assert 'field' not in head(plain['csv_path'])
+    assert 'field' in head(topical['csv_path'])

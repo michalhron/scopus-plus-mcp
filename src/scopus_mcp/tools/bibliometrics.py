@@ -7,9 +7,11 @@ import mcp.types as types
 from ..bibtex import generated_entry, make_keys_unique
 from ..journals import category_names, clean_openalex_source, clean_serial_entry, format_issn, normalize_issn, resolve_categories, serial_entry_issns, srcid_queries, subject_ranks, venue_type
 from ..openalex import clean_openalex_work, openalex_work_key
+from ..journal_cut import QUALITY_PROPS
+from ..topics import TOPIC_PROPS, reject_topics_for_scopus
 from ..output import _output_dir
 from ..records import clean_abstract_details, to_scopus_id
-from .common import SOURCE_SCHEMA, _source, _write_rows_csv, server_module
+from .common import SOURCE_SCHEMA, _source, _write_rows_csv, resolve_openalex_scope, server_module
 
 
 # Cap on the year span of a Scopus publication_counts call (one request per year).
@@ -91,7 +93,11 @@ TOOLS = [
             f"(at most {MAX_SCOPUS_YEARS} years). OpenAlex: plain words matched "
             "against title and abstract (quote phrases), one request for all "
             "years. The two sources count differently; compare trends within "
-            "one source, not levels across sources."
+            "one source, not levels across sources. With source='openalex', "
+            "topics restricts the count to OpenAlex topics, subfields or fields "
+            "(one extra request per name to resolve it) and min_percentile adds a "
+            "journal quality cut relative to each journal's field (extra "
+            "requests listed on that parameter)."
         ),
         inputSchema={
             "type": "object",
@@ -105,7 +111,9 @@ TOOLS = [
                 },
                 "from_year": {"type": "integer", "description": "First year (inclusive)."},
                 "to_year": {"type": "integer", "description": "Last year (inclusive)."},
-                "source": SOURCE_SCHEMA
+                "source": SOURCE_SCHEMA,
+                **TOPIC_PROPS,
+                **QUALITY_PROPS,
             },
             "required": ["query"]
         }
@@ -249,10 +257,14 @@ async def _publication_counts(arguments: dict) -> list:
     if from_year is not None and to_year is not None and from_year > to_year:
         raise ValueError(f"from_year {from_year} is after to_year {to_year}")
 
+    oa_scope = None
     if source == 'openalex':
-        counts, total = await openalex.yearly_counts(query, from_year, to_year)
+        years = f"publication_year:{from_year or ''}-{to_year or ''}" if (from_year or to_year) else None
+        oa_scope = await resolve_openalex_scope(srv, arguments, query, None, base_extra=years)
+        counts, total = await openalex.yearly_counts(query, from_year, to_year, **oa_scope.kwargs)
         note = "OpenAlex title-and-abstract match."
     else:
+        reject_topics_for_scopus(arguments)
         if from_year is None or to_year is None:
             raise ValueError(
                 "Scopus publication_counts needs from_year and to_year "
@@ -285,6 +297,9 @@ async def _publication_counts(arguments: dict) -> list:
         'peak_year': peak,
         'note': note,
     }
+    if oa_scope and oa_scope.lines:
+        result.update(oa_scope.info)
+        result['scope_summary'] = oa_scope.summary
     return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
 

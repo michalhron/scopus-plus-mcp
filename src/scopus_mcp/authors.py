@@ -92,3 +92,21 @@ def clean_openalex_author(author: Dict[str, Any]) -> Dict[str, Any]:
                    if t.get('display_name')],
         'source': 'openalex',
     }
+
+
+def clean_openalex_author_profile(author: Dict[str, Any]) -> Dict[str, Any]:
+    """Author profile from an OpenAlex author: the search record plus name
+    variants, i10 and 2-year mean citedness, and the last five years."""
+    base = clean_openalex_author(author)
+    stats = author.get('summary_stats') or {}
+    base['name_variants'] = list(author.get('display_name_alternatives') or [])[:10]
+    base['i10_index'] = stats.get('i10_index')
+    base['two_year_mean_citedness'] = stats.get('2yr_mean_citedness')
+    base['affiliations'] = [i.get('display_name') for i in (author.get('last_known_institutions') or [])
+                            if i.get('display_name')]
+    base['counts_by_year'] = [
+        {'year': c.get('year'), 'works': c.get('works_count'), 'cited_by': c.get('cited_by_count')}
+        for c in (author.get('counts_by_year') or [])[:5]]
+    base['topics'] = [t.get('display_name') for t in (author.get('topics') or [])[:10]
+                      if t.get('display_name')]
+    return base

@@ -16,7 +16,7 @@ import asyncio
 import logging
 import random
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import httpx
 
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://api.openalex.org/"
 WORK_FIELDS = (
     "id,doi,title,publication_year,publication_date,cited_by_count,type,"
-    "primary_location,authorships,referenced_works,ids"
+    "primary_location,authorships,referenced_works,ids,primary_topic"
 )
 PER_PAGE = 200  # OpenAlex maximum
 ID_BATCH = 50   # IDs per `openalex:` filter request
@@ -52,6 +52,26 @@ _DOI = re.compile(r'(?:https?://(?:dx\.)?doi\.org/|doi:)?(10\.\d{4,9}/\S+)$', re
 
 class OpenAlexError(Exception):
     """An OpenAlex request failed in a way the caller should report."""
+
+
+_AUTHOR_ID = re.compile(r'(?:https?://openalex\.org/)?(A\d+)$', re.IGNORECASE)
+_ORCID = re.compile(r'(?:https?://orcid\.org/)?(\d{4}-\d{4}-\d{4}-\d{3}[\dX])$', re.IGNORECASE)
+AUTHOR_PROFILE_FIELDS = (
+    "id,display_name,display_name_alternatives,orcid,works_count,cited_by_count,"
+    "last_known_institutions,summary_stats,topics,counts_by_year"
+)
+
+
+def openalex_author_key(identifier: str) -> Optional[str]:
+    """Path key for an author lookup: 'A123' or 'orcid:0000-...'; None if neither."""
+    value = (identifier or '').strip()
+    m = _AUTHOR_ID.match(value)
+    if m:
+        return m.group(1).upper()
+    m = _ORCID.match(value)
+    if m:
+        return f"orcid:{m.group(1).upper()}"
+    return None
 
 
 def openalex_work_key(identifier: str) -> Optional[str]:
@@ -109,16 +129,73 @@ def indexed_name(display_name: Optional[str]) -> Optional[str]:
     return f"{parts[-1]} {initials}".strip()
 
 
-def _and(filter_expr: str, extra: Optional[str]) -> str:
-    return f'{filter_expr},{extra}' if extra else filter_expr
+# OpenAlex takes a limited number of OR values per filter and a limited URL
+# length. Long lists (journal ISSNs, source IDs) are split into chunks of this
+# size and run as separate requests.
+OR_CHUNK = 50
+
+FilterParts = Union[None, str, List[str]]
+
+
+def chunk_or(key: str, values: List[str], size: int = OR_CHUNK) -> FilterParts:
+    """'key:a|b|...' for the values, split into several filters when there are
+    more than `size`. A single filter comes back as a string, several as a
+    list of alternatives (see and_filters). None for no values."""
+    vals = list(dict.fromkeys(v for v in values if v))
+    parts = [f"{key}:{'|'.join(vals[i:i + size])}" for i in range(0, len(vals), size)]
+    if not parts:
+        return None
+    return parts[0] if len(parts) == 1 else parts
+
+
+def and_filters(*parts: FilterParts) -> FilterParts:
+    """AND filter fragments together. A list part holds alternatives (chunks of
+    one long OR list); the result is a list of full filters when any part is
+    one, so the caller runs one request per element and merges."""
+    combos = ['']
+    for part in parts:
+        if not part:
+            continue
+        alts = [part] if isinstance(part, str) else list(part)
+        combos = [f'{c},{a}' if c else a for c in combos for a in alts]
+    if combos == ['']:
+        return None
+    return combos[0] if len(combos) == 1 else combos
+
+
+def _and(filter_expr: str, extra: FilterParts) -> FilterParts:
+    return and_filters(filter_expr, extra)
+
+
+_MERGE_SORT = {
+    'cited_by_count:desc': lambda w: -(w.get('cited_by_count') or 0),
+    'publication_date:desc': lambda w: w.get('publication_date') or '',
+    'relevance_score:desc': lambda w: -(w.get('relevance_score') or 0),
+}
+
+
+def _entity(node: Any) -> Tuple[Optional[str], Optional[str]]:
+    """(short id, display name) of a topic, subfield, field or domain node."""
+    node = node if isinstance(node, dict) else {}
+    return short_id(node.get('id')), node.get('display_name')
 
 
 def clean_openalex_work(work: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalize an OpenAlex work to the Scopus-cleaner record shape."""
+    """Normalize an OpenAlex work to the Scopus-cleaner record shape.
+
+    Topic fields come from `primary_topic`, which OpenAlex leaves empty for
+    records it cannot classify; those keys are then None. Scopus records do
+    not carry them.
+    """
     authorships = work.get('authorships') or []
     first = (authorships[0].get('author') or {}) if authorships else {}
     source = ((work.get('primary_location') or {}).get('source') or {})
     year = work.get('publication_year')
+    topic = work.get('primary_topic') or {}
+    topic_id, topic_name = _entity(topic)
+    _, subfield = _entity(topic.get('subfield'))
+    _, field = _entity(topic.get('field'))
+    _, domain = _entity(topic.get('domain'))
     return {
         'openalex_id': short_id(work.get('id')),
         'title': work.get('title'),
@@ -130,6 +207,12 @@ def clean_openalex_work(work: Dict[str, Any]) -> Dict[str, Any]:
         'cited_by_count': work.get('cited_by_count'),
         'type': work.get('type'),
         'source': 'openalex',
+        'topic_id': topic_id,
+        'topic': topic_name,
+        'subfield': subfield,
+        'field': field,
+        'domain': domain,
+        'topic_score': topic.get('score'),
     }
 
 
@@ -241,14 +324,57 @@ class OpenAlexClient:
                       'summary_stats,works_count,cited_by_count',
         })
 
-    async def get_work(self, identifier: str) -> Optional[Dict[str, Any]]:
+    async def get_entity(self, kind: str, entity_id: str) -> Optional[Dict[str, Any]]:
+        """A topic, subfield or field by its ID; None when not found. Free."""
+        return await self._get(f'{kind}/{entity_id}', {'select': 'id,display_name'})
+
+    async def taxonomy(self, kind: str) -> List[Dict[str, Any]]:
+        """All 'fields' (26) or 'subfields' (252): ID and name. Cached 24 h."""
+        out: List[Dict[str, Any]] = []
+        page = 1
+        while True:
+            data = await self._get(kind, {'per-page': PER_PAGE, 'page': page,
+                                          'select': 'id,display_name'}) or {}
+            batch = data.get('results') or []
+            out.extend(batch)
+            if len(batch) < PER_PAGE:
+                return out
+            page += 1
+
+    async def sources_by_ids(self, source_ids: List[str]) -> List[Dict[str, Any]]:
+        """Journals and other venues by OpenAlex source ID (up to ID_BATCH per
+        request, 1 credit): name, ISSNs and venue type."""
+        data = await self._get('sources', {
+            'filter': 'openalex:' + '|'.join(source_ids), 'per-page': ID_BATCH,
+            'select': 'id,display_name,issn_l,issn,type',
+        }) or {}
+        return data.get('results') or []
+
+    async def search_topics(self, name: str, count: int = 50) -> List[Dict[str, Any]]:
+        """Topics whose name contains the words of `name`. One request."""
+        data = await self._get('topics', {
+            'filter': f'display_name.search:{_search_value(name)}',
+            'per-page': count, 'select': 'id,display_name',
+        }) or {}
+        return data.get('results') or []
+
+    async def get_work(self, identifier: str,
+                       select: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Raw work by OpenAlex ID or DOI; None when not found."""
         key = openalex_work_key(identifier)
         if key is None:
             raise ValueError(
                 f"{identifier!r} is not an OpenAlex work ID (W...) or a DOI."
             )
-        return await self._get(f'works/{key}', {'select': WORK_FIELDS})
+        return await self._get(f'works/{key}', {'select': select or WORK_FIELDS})
+
+    async def get_author(self, author_id: str) -> Optional[Dict[str, Any]]:
+        """Raw author by OpenAlex ID (A...) or ORCID; None when not found."""
+        key = openalex_author_key(author_id)
+        if key is None:
+            raise ValueError(
+                f"{author_id!r} is not an OpenAlex author ID (A...) or an ORCID.")
+        return await self._get(f'authors/{key}', {'select': AUTHOR_PROFILE_FIELDS})
 
     async def find_by_title(self, title: str, year: Optional[int] = None) -> Optional[Dict[str, Any]]:
         """Work whose title matches exactly (after normalize_title), within one
@@ -275,9 +401,16 @@ class OpenAlexClient:
             return None
         return max(exact, key=lambda w: len(w.get('referenced_works') or []))
 
-    async def list_works(self, filter_expr: str, max_results: int,
-                         sort: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-        """Cursor-paged works for a filter. Returns (raw works, meta)."""
+    async def list_works(self, filter_expr: FilterParts, max_results: int,
+                         sort: Optional[str] = None,
+                         select: str = WORK_FIELDS) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """Cursor-paged works for a filter. Returns (raw works, meta).
+
+        A list of filters (chunks of a long OR list) is run one request chain
+        per element and merged with de-duplication on the work ID, then sorted
+        and cut to max_results. Cost multiplies with the number of chunks."""
+        if isinstance(filter_expr, (list, tuple)):
+            return await self._list_chunked(list(filter_expr), max_results, sort, select)
         works: List[Dict[str, Any]] = []
         cursor = '*'
         total = None
@@ -287,7 +420,7 @@ class OpenAlexClient:
                 'filter': filter_expr,
                 'per-page': min(PER_PAGE, max_results - len(works)),
                 'cursor': cursor,
-                'select': WORK_FIELDS,
+                'select': select,
             }
             if sort:
                 params['sort'] = SORTS.get(sort, sort)
@@ -310,9 +443,37 @@ class OpenAlexClient:
             'source': 'openalex',
         }
 
+    async def _list_chunked(self, filters: List[str], max_results: int,
+                            sort: Optional[str], select: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        order = SORTS.get(sort, sort) if sort else None
+        if order == 'relevance_score:desc' and 'relevance_score' not in select:
+            select += ',relevance_score'
+        merged: Dict[str, Dict[str, Any]] = {}
+        total = pages = 0
+        for f in filters:
+            works, meta = await self.list_works(f, max_results, sort, select)
+            total += meta.get('total_available') or 0
+            pages += meta.get('pages_fetched') or 0
+            for w in works:
+                merged.setdefault(w.get('id'), w)
+        works = list(merged.values())
+        if order in _MERGE_SORT:
+            works.sort(key=_MERGE_SORT[order])
+        works = works[:max_results]
+        return works, {
+            # Chunks can overlap (a journal's print and electronic ISSN, or a
+            # work matching several topics), so the sum is an upper bound.
+            'total_available': total,
+            'total_fetched': len(works),
+            'truncated': len(merged) > len(works),
+            'pages_fetched': pages,
+            'chunks': len(filters),
+            'source': 'openalex',
+        }
+
     async def search(self, query: str, max_results: int = 200,
                      sort: str = 'relevance',
-                     extra_filter: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+                     extra_filter: FilterParts = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Title-and-abstract search; extra_filter is ANDed (e.g. an ISSN scope)."""
         return await self.list_works(
             _and(f'title_and_abstract.search:{_search_value(query)}', extra_filter),
@@ -321,7 +482,7 @@ class OpenAlexClient:
 
     async def citing(self, work_id: str, max_results: int = 200,
                      sort: str = 'coverDate',
-                     extra_filter: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+                     extra_filter: FilterParts = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Works that cite `work_id` (an OpenAlex W-id)."""
         return await self.list_works(_and(f'cites:{work_id}', extra_filter), max_results, sort)
 
@@ -367,21 +528,58 @@ class OpenAlexClient:
         return await self.works_by_ids(ref_ids)
 
     async def yearly_counts(self, query: str, from_year: Optional[int] = None,
-                            to_year: Optional[int] = None) -> Tuple[Dict[int, int], int]:
+                            to_year: Optional[int] = None,
+                            extra_filter: FilterParts = None) -> Tuple[Dict[int, int], int]:
         """Works per publication year for a title-and-abstract query.
 
-        One grouped request (1 credit). Returns ({year: count}, total).
+        One grouped request (1 credit). Returns ({year: count}, total). A
+        chunked extra_filter costs one request per chunk and sums them, so
+        its chunks must not overlap (source IDs, not ISSNs).
         """
         filters = [f'title_and_abstract.search:{_search_value(query)}']
         if from_year or to_year:
             filters.append(f"publication_year:{from_year or ''}-{to_year or ''}")
-        data = await self._get('works', {
-            'filter': ','.join(filters), 'group_by': 'publication_year',
-        }) or {}
-        counts = {}
-        for group in data.get('group_by') or []:
-            try:
-                counts[int(group['key'])] = int(group['count'])
-            except (KeyError, TypeError, ValueError):
-                continue
-        return dict(sorted(counts.items())), int((data.get('meta') or {}).get('count') or 0)
+        counts: Dict[int, int] = {}
+        total = 0
+        full = and_filters(','.join(filters), extra_filter)
+        for f in ([full] if isinstance(full, str) else full):
+            groups, n = await self.group_by(f, 'publication_year')
+            total += n
+            for g in groups:
+                try:
+                    year = int(g['key'])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                counts[year] = counts.get(year, 0) + int(g['count'])
+        return dict(sorted(counts.items())), total
+
+    async def grouped_counts(self, filter_expr: FilterParts, key: str,
+                             max_groups: int = 200) -> Tuple[Dict[str, Dict[str, Any]], int, int]:
+        """({group id: {'name', 'count'}}, total works, requests).
+
+        Group ids are short IDs ('17' for a field, 'T10346' for a topic) or
+        'unknown' for works without the attribute. A list of filters (chunks
+        of source IDs) is summed, so its chunks must not overlap."""
+        out: Dict[str, Dict[str, Any]] = {}
+        total = calls = 0
+        for f in ([filter_expr] if isinstance(filter_expr, str) else list(filter_expr or [])):
+            groups, n = await self.group_by(f, key, max_groups)
+            calls += max(1, -(-len(groups) // PER_PAGE))
+            total += n
+            for g in groups:
+                gid = short_id(str(g.get('key')))
+                entry = out.setdefault(gid, {'name': g.get('key_display_name'), 'count': 0})
+                entry['count'] += int(g.get('count') or 0)
+        return out, total, calls
+
+    async def group_by(self, filter_expr: str, key: str,
+                       max_groups: int = 200) -> Tuple[List[Dict[str, Any]], int]:
+        """Grouped counts for a filter: ([{'key', 'key_display_name',
+        'count'}], total works). One request (1 credit). OpenAlex limits
+        group_by to page 1 with at most 200 groups (live check 2026-10-11:
+        asking for page 2 is a 400), so a key with more values is truncated
+        to its 200 largest; callers use `total` to account for the rest."""
+        data = await self._get('works', {'filter': filter_expr, 'group_by': key}) or {}
+        groups = (data.get('group_by') or [])[:max_groups]
+        total = int((data.get('meta') or {}).get('count') or 0)
+        return groups, total

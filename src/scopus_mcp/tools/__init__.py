@@ -9,13 +9,14 @@ from . import (
     history,
     imports,
     networks,
+    profile,
     search,
     themes,
     transmission,
 )
 
 _GROUPS = (search, citations, networks, corpus, history, fronts, themes, transmission,
-           bibliometrics, imports, diagnostics, jobs)
+           bibliometrics, profile, imports, diagnostics, jobs)
 
 TOOLS = [tool for group in _GROUPS for tool in group.TOOLS]
 HANDLERS = {name: handler for group in _GROUPS for name, handler in group.HANDLERS.items()}

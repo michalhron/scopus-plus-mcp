@@ -6,11 +6,76 @@ are pushed yet (see "Release process" in ROADMAP.md).
 ## [Unreleased]
 
 ### Added
+- OpenAlex versions of `get_abstract_details`, `resolve_identifier` and
+  `get_author_profile`: a DOI or OpenAlex work ID, or an OpenAlex author ID or
+  ORCID, is looked up in OpenAlex when `source='openalex'`, when the ID only
+  exists in OpenAlex form (W..., A...), or when no Scopus key is set.
+  `get_quota_status` also shows the OpenAlex daily budget. Live check passed
+  2026-10-11. The remaining Scopus-only tools are planned in
+  ROADMAP.md.
+- The server starts without a Scopus key, so OpenAlex-only use works. Scopus
+  tools then fail with a message that names the missing key and points to
+  `source='openalex'`; `diagnose_connection` skips the network checks and says
+  so. `scripts/smoke_openalex_only.py` runs every tool once in that mode. Live
+  result 2026-10-11: 21 of 29 calls returned results; the eight Scopus-only
+  tools are listed in ROADMAP.md.
+- `scopus-plus-mcp set-key NAME` saves a key (`openalex_api_key`, `api_key`,
+  `insttoken`, `core_api_key`, `semantic_scholar_api_key`) in the OS secret
+  store; the value is typed at a prompt. `diagnose_connection` now reports
+  whether an OpenAlex key is present and where it came from.
+- OpenAlex topics as a corpus scope. `topics` on `search_all`,
+  `publication_counts`, `citation_network`, `research_fronts`, `rpys`,
+  `historiograph` and `thematic_evolution` (OpenAlex only) takes topic,
+  subfield or field IDs or exact names, several as OR at one level, matched
+  on the primary topic or any topic (`topic_match`). Ambiguous or unknown
+  names are refused with the candidates. `work_types` defaults to articles,
+  reviews, books and book chapters, because OpenAlex's October 2026
+  classifier also gives datasets and specimens topics. The reply opens with
+  the resolved scope. OpenAlex records carry `topic_id`, `topic`, `subfield`,
+  `field`, `domain` and `topic_score`. Live check: topic names, refusal of
+  unknown names and field-scoped search passed against OpenAlex on 2026-10-11.
+- Field-relative quality cut: `min_percentile`, `percentile_rule`,
+  `categories` and `include_venues`. Keeps papers from journals at or above a
+  CiteScore percentile in their own Scopus category, so one corpus can span
+  IS, strategy and marketing. Lists journals kept and dropped, venues without
+  CiteScore, proceedings dropped and the share removed, with a CSV. Refuses
+  without Scopus Serial Title access, since OpenAlex's own measures are not
+  field-relative. Live check: passed against OpenAlex and Scopus on
+  2026-10-11. OpenAlex returns at most the 200 largest venues per request, so
+  a saturated reply is split by publication year, and a saturated year by
+  month, and the venue counts are added up, with a short pause between
+  requests. Live check of the split passed on 2026-10-11 ("digital
+  transformation", business field, 75th percentile): 701 journals kept instead
+  of 52, 14,532 papers without a venue instead of 28,603, 87% of 45,367 papers
+  removed; about 4 minutes and $0.10 of OpenAlex budget.
+- `scope` takes a CSV path with an ISSN column. OpenAlex scopes over 50
+  journals now run in merged, de-duplicated chunks in every tool that takes
+  `scope`.
+- `topic_profile`: papers and shares by field, subfield and topic, per year
+  by field, and the first year each field passed a share threshold. Grouped
+  requests only. Live check: passed against OpenAlex on 2026-10-11.
+- `citation_network` reports the field-to-field citation matrix
+  (`flow_level` field or subfield), the within-field and cross-field shares,
+  the largest cross-field flows and the field of each main-path paper.
+  `research_fronts` gives each front its field mix. No extra requests.
+  `plot_main_path.py` has `--lanes-by-field`. Live check passed on
+  2026-10-11, including the plot by field and by subfield.
+- `main-path` skill: slicing a field by OpenAlex topics with a quality cut.
 - `main-path` skill in the Claude Code plugin: a guided main path
   analysis from a Scopus query to a drawn map (search path count, global
   main path, key routes, a year-by-lane plot). Written for the tutorial
   "Map a research field with Claude". Scripts run on Python 3 with
   matplotlib, and `main_path.py --selftest` checks the install.
+
+### Fixed
+- `plot_main_path.py`: a paper without a year counted as year 0 and stretched
+  the time axis to 0, squeezing the whole map against the right edge. Found by
+  the live check of `--lanes-by-field`.
+- Unknown `work_types` (for example `nonsense`) matched nothing and returned 0
+  papers without a word. They are refused now, with the list of the 25 types
+  OpenAlex has.
+- The live topic tests ran on the anonymous OpenAlex budget, because the test
+  setup removes `OPENALEX_API_KEY`. They keep the real key now.
 
 ## [0.24.0] - 2026-09-30
 
