@@ -315,3 +315,33 @@ def test_group_by_never_asks_for_page_two():
     groups, total = _run(client(taxonomy_router(handler)).group_by(
         'title_and_abstract.search:x', 'primary_location.source.id', max_groups=2000))
     assert len(groups) == 200 and total == 5000 and len(seen) == 1
+
+
+def test_saturated_venue_list_is_split_by_year_and_merged(monkeypatch):
+    monkeypatch.setattr('scopus_mcp.journal_cut.SPLIT_PAUSE', 0)
+    seen = []
+
+    def handler(request, path, p):
+        if path != 'works' or 'group_by' not in p:
+            return None
+        seen.append((p['group_by'], p['filter']))
+        if p['group_by'] == 'publication_year':
+            return httpx.Response(200, json={'meta': {'count': 6}, 'group_by': [
+                {'key': '2020', 'key_display_name': '2020', 'count': 3},
+                {'key': '2021', 'key_display_name': '2021', 'count': 3}]})
+        if 'publication_year:2020' in p['filter']:
+            groups = [{'key': 'https://openalex.org/S1', 'key_display_name': 'A', 'count': 3}]
+            return httpx.Response(200, json={'meta': {'count': 3}, 'group_by': groups})
+        if 'publication_year:2021' in p['filter']:
+            groups = [{'key': 'https://openalex.org/S1', 'key_display_name': 'A', 'count': 1},
+                      {'key': 'https://openalex.org/S2', 'key_display_name': 'B', 'count': 2}]
+            return httpx.Response(200, json={'meta': {'count': 3}, 'group_by': groups})
+        groups = [{'key': f'https://openalex.org/S{i}', 'key_display_name': f'J{i}', 'count': 1}
+                  for i in range(1000, 1200)]
+        return httpx.Response(200, json={'meta': {'count': 6000}, 'group_by': groups})
+
+    from scopus_mcp.journal_cut import _venues
+    venues, total, unknown, calls = _run(_venues(client(taxonomy_router(handler)), 'f:x'))
+    by = {v['openalex_id']: v['works'] for v in venues}
+    assert by == {'S1': 4, 'S2': 2} and total == 6000 and calls == 4
+    assert all('page' not in f for _k, f in seen)

@@ -23,6 +23,8 @@ differs by field by an order of magnitude, and a fair percentile would need
 every source of each journal's field, thousands of requests. Without Scopus
 Serial Title access the cut refuses. A cut that keeps no venue raises.
 """
+import asyncio
+import calendar
 import math
 import re
 from dataclasses import dataclass, field as dc_field
@@ -153,7 +155,7 @@ class CutReport:
             + (f" ({round(100 * pct)}% removed)." if pct is not None else ".")
         ]
         if self.works_without_venue:
-            lines.append(f"{self.works_without_venue} papers have no venue in OpenAlex or sit in venues beyond the 200 largest that OpenAlex returns per request, and are cut. Narrow the topic or the years to bring them in.")
+            lines.append(f"{self.works_without_venue} papers have no venue in OpenAlex and are cut.")
         pd = self.proceedings_dropped
         if pd['venues']:
             lines.append(f"Proceedings or book series dropped: {pd['venues']} venues, "
@@ -187,6 +189,60 @@ def parse_include(values: Optional[List[str]]) -> Tuple[set, set]:
     return ids, issns
 
 
+VENUE_KEY = 'primary_location.source.id'
+SPLIT_PAUSE = 0.2  # seconds between split requests, to stay polite to OpenAlex
+
+
+def _saturated(groups, total: int) -> bool:
+    """A grouped reply is cut off when it holds the 200-group maximum and the
+    groups do not add up to all works (works with no venue show up as one
+    group, so a complete reply can still be short of the total)."""
+    return (len(groups) >= PER_PAGE
+            and sum(int(g.get('count') or 0) for g in groups) < total)
+
+
+async def _venue_groups(openalex, f: str) -> Tuple[List[Dict[str, Any]], int, int]:
+    """(venue groups, total works, requests). OpenAlex returns at most the 200
+    largest venues per request, so a saturated reply is split by publication
+    year, and a still saturated year by month, and the counts are added up."""
+    groups, n = await openalex.group_by(f, VENUE_KEY, max_groups=MAX_VENUES)
+    calls = 1
+    if not _saturated(groups, n):
+        return groups, n, calls
+    merged: Dict[str, Dict[str, Any]] = {}
+
+    def add(gs):
+        for g in gs:
+            key = str(g.get('key'))
+            m = merged.setdefault(key, {'key': g.get('key'),
+                                        'key_display_name': g.get('key_display_name'),
+                                        'count': 0})
+            m['count'] += int(g.get('count') or 0)
+
+    years, _ = await openalex.group_by(f, 'publication_year')
+    calls += 1
+    for yg in sorted(years, key=lambda g: str(g.get('key'))):
+        year = str(yg.get('key'))
+        if not year.isdigit() or not int(yg.get('count') or 0):
+            continue
+        await asyncio.sleep(SPLIT_PAUSE)
+        yf = f"{f},publication_year:{year}"
+        ygroups, yn = await openalex.group_by(yf, VENUE_KEY, max_groups=MAX_VENUES)
+        calls += 1
+        if not _saturated(ygroups, yn):
+            add(ygroups)
+            continue
+        for month in range(1, 13):
+            await asyncio.sleep(SPLIT_PAUSE)
+            last = calendar.monthrange(int(year), month)[1]
+            mf = (f"{f},from_publication_date:{year}-{month:02d}-01,"
+                  f"to_publication_date:{year}-{month:02d}-{last:02d}")
+            mgroups, _mn = await openalex.group_by(mf, VENUE_KEY, max_groups=MAX_VENUES)
+            calls += 1
+            add(mgroups)
+    return list(merged.values()), n, calls
+
+
 async def _venues(openalex, filter_expr: FilterParts) -> Tuple[List[Dict[str, Any]], int, int, int]:
     """(venues with work counts, total works, works without a venue, requests).
     A list of filters (chunks of a scope) is grouped chunk by chunk and the
@@ -194,9 +250,8 @@ async def _venues(openalex, filter_expr: FilterParts) -> Tuple[List[Dict[str, An
     by_id: Dict[str, Dict[str, Any]] = {}
     total = unknown = calls = 0
     for f in ([filter_expr] if isinstance(filter_expr, str) else list(filter_expr or [])):
-        groups, n = await openalex.group_by(f, 'primary_location.source.id',
-                                            max_groups=MAX_VENUES)
-        calls += max(1, math.ceil(len(groups) / PER_PAGE))
+        groups, n, used = await _venue_groups(openalex, f)
+        calls += used
         total += n
         seen = 0
         for g in groups:

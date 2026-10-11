@@ -25,7 +25,10 @@ are pushed yet (see "Release process" in ROADMAP.md).
   without Scopus Serial Title access, since OpenAlex's own measures are not
   field-relative. Live check: passed against OpenAlex and Scopus on
   2026-10-11. OpenAlex returns at most the 200 largest venues per request, so
-  papers in smaller venues count as cut and the report says so.
+  a saturated reply is split by publication year, and a saturated year by
+  month, and the venue counts are added up, with a short pause between
+  requests. Live check of the split: not yet run, the anonymous daily budget
+  was spent.
 - `scope` takes a CSV path with an ISSN column. OpenAlex scopes over 50
   journals now run in merged, de-duplicated chunks in every tool that takes
   `scope`.
