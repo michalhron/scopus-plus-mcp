@@ -278,7 +278,7 @@ async def _search_scopus(arguments: dict) -> list:
 
 
 COMPACT_FIELDS = ('scopus_id', 'openalex_id', 'doi', 'year', 'creator', 'title',
-                  'publication_name', 'issn', 'cited_by_count')
+                  'publication_name', 'issn', 'cited_by_count', 'topic', 'field')
 
 
 def compact_lines(records: list) -> str:

@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://api.openalex.org/"
 WORK_FIELDS = (
     "id,doi,title,publication_year,publication_date,cited_by_count,type,"
-    "primary_location,authorships,referenced_works,ids"
+    "primary_location,authorships,referenced_works,ids,primary_topic"
 )
 PER_PAGE = 200  # OpenAlex maximum
 ID_BATCH = 50   # IDs per `openalex:` filter request
@@ -113,12 +113,28 @@ def _and(filter_expr: str, extra: Optional[str]) -> str:
     return f'{filter_expr},{extra}' if extra else filter_expr
 
 
+def _entity(node: Any) -> Tuple[Optional[str], Optional[str]]:
+    """(short id, display name) of a topic, subfield, field or domain node."""
+    node = node if isinstance(node, dict) else {}
+    return short_id(node.get('id')), node.get('display_name')
+
+
 def clean_openalex_work(work: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalize an OpenAlex work to the Scopus-cleaner record shape."""
+    """Normalize an OpenAlex work to the Scopus-cleaner record shape.
+
+    Topic fields come from `primary_topic`, which OpenAlex leaves empty for
+    records it cannot classify; those keys are then None. Scopus records do
+    not carry them.
+    """
     authorships = work.get('authorships') or []
     first = (authorships[0].get('author') or {}) if authorships else {}
     source = ((work.get('primary_location') or {}).get('source') or {})
     year = work.get('publication_year')
+    topic = work.get('primary_topic') or {}
+    topic_id, topic_name = _entity(topic)
+    _, subfield = _entity(topic.get('subfield'))
+    _, field = _entity(topic.get('field'))
+    _, domain = _entity(topic.get('domain'))
     return {
         'openalex_id': short_id(work.get('id')),
         'title': work.get('title'),
@@ -130,6 +146,12 @@ def clean_openalex_work(work: Dict[str, Any]) -> Dict[str, Any]:
         'cited_by_count': work.get('cited_by_count'),
         'type': work.get('type'),
         'source': 'openalex',
+        'topic_id': topic_id,
+        'topic': topic_name,
+        'subfield': subfield,
+        'field': field,
+        'domain': domain,
+        'topic_score': topic.get('score'),
     }
 
 

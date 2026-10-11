@@ -14,6 +14,10 @@ CSV_COLUMNS = [
     'openalex_id', 'source',
 ]
 
+# Added to the CSV only when the records carry them (OpenAlex), so Scopus
+# files keep their columns.
+TOPIC_COLUMNS = ['topic_id', 'topic', 'subfield', 'field', 'domain', 'topic_score']
+
 
 # Inline-vs-file threshold: result sets larger than this are written to disk.
 SEARCH_ALL_INLINE_THRESHOLD = 50
@@ -68,8 +72,9 @@ def write_results_to_disk(records: List[Dict[str, Any]], query: str) -> Dict[str
         json.dumps(records, ensure_ascii=False, indent=2),
         encoding='utf-8',
     )
+    columns = CSV_COLUMNS + (TOPIC_COLUMNS if any('topic_id' in r for r in records) else [])
     with csv_path.open('w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS, extrasaction='ignore')
+        writer = csv.DictWriter(f, fieldnames=columns, extrasaction='ignore')
         writer.writeheader()
         writer.writerows(records)
 
