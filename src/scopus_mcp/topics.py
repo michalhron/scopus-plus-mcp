@@ -23,6 +23,14 @@ LEVEL_ENDPOINTS = {'topic': 'topics', 'subfield': 'subfields', 'field': 'fields'
 # Records that are papers or books. The October 2026 classifier also assigns
 # topics to datasets, specimens and proposals, so counts need a type filter.
 DEFAULT_WORK_TYPES = ('article', 'review', 'book', 'book-chapter')
+# Work types OpenAlex returned for `group_by=type` on 2026-10-11. An unknown
+# type would silently match nothing, so it is refused with this list.
+KNOWN_WORK_TYPES = (
+    'article', 'book', 'book-chapter', 'book-review', 'conference-abstract',
+    'conference-paper', 'data-paper', 'dataset', 'dissertation', 'editorial',
+    'erratum', 'letter', 'libguides', 'other', 'paratext', 'peer-review',
+    'preprint', 'reference-entry', 'report', 'retraction', 'review', 'software',
+    'software-paper', 'standard', 'supplementary-materials')
 MAX_TOPICS = 50  # one OR filter, never chunked, so counts stay exact
 
 _TOPIC_ID = re.compile(r'^(?:https?://openalex\.org/)?(T\d+)$', re.IGNORECASE)
@@ -204,7 +212,13 @@ def parse_work_types(value: Any) -> Optional[List[str]]:
         [str(t).strip() for t in value if str(t).strip()]
     if any(t.lower() == 'all' for t in items):
         return None
-    return [t.lower() for t in dict.fromkeys(items)]
+    types = [t.lower() for t in dict.fromkeys(items)]
+    unknown = [t for t in types if t not in KNOWN_WORK_TYPES]
+    if unknown:
+        raise ValueError(
+            f"Unknown work type(s) {', '.join(map(repr, unknown))}: they would match "
+            f"nothing. OpenAlex types: {', '.join(KNOWN_WORK_TYPES)} (or 'all').")
+    return types
 
 
 async def build_topic_scope(openalex, arguments: dict,

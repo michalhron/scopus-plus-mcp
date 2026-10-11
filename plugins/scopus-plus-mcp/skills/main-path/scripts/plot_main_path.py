@@ -42,7 +42,8 @@ lane_y = {name: len(order) - 1 - i for i, name in enumerate(order)}
 ly = lambda i: lane_y.get(lanes["assign"].get(i, lanes["order"][0]), lane_y[lanes["order"][0]])
 
 fig, ax = plt.subplots(figsize=(12, 1.6 + 1.4 * len(order)), dpi=200)
-y0, y1 = min(map(yr, papers)), max(map(yr, papers))
+dated = [yr(i) for i in papers if yr(i) > 0]  # a paper without a year must not stretch the axis to year 0
+y0, y1 = min(dated), max(dated)
 for name, y in lane_y.items():
     ax.axhspan(y - 0.5, y + 0.5, color=PALE if y % 2 else "white", lw=0, zorder=0)
     ax.text(y0 - 0.5, y + 0.38, (a.highlight_label if name == "__hl" else name).upper(), fontsize=9, fontweight="bold",
@@ -61,7 +62,7 @@ for n, (i, lab) in enumerate(zip(path, labels)):
     ax.annotate(lab, pos[i], xytext=(0, dy), textcoords="offset points", ha="center",
                 va="bottom" if dy > 0 else "top", fontsize=8.5, fontweight="bold", color=TEXT)
 if a.highlight:
-    rx = re.compile(a.highlight, re.I); hl = [i for i, p in papers.items() if rx.search(p.get("title") or "")]
+    rx = re.compile(a.highlight, re.I); hl = [i for i, p in papers.items() if yr(i) > 0 and rx.search(p.get("title") or "")]
     for j, i in enumerate(hl):
         ax.scatter(yr(i) + ((j * 37) % 100) / 100 * 0.8 - 0.4, lane_y["__hl"] - 0.25 + ((j * 53) % 100) / 100 * 0.4,
                    s=18, facecolor="white", edgecolor=MUTED, lw=0.8, zorder=3)

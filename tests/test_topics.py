@@ -334,3 +334,8 @@ def test_records_without_a_topic_do_not_crash_the_tools():
     assert 'Digital transformation' in text
     rec = clean_openalex_work(bare)
     assert rec['topic'] is None and rec['field'] is None
+
+
+def test_unknown_work_type_is_refused_with_the_list():
+    with pytest.raises(ValueError, match="nonsense.*conference-paper"):
+        parse_work_types(['article', 'nonsense'])

@@ -24,10 +24,8 @@ in "OpenAlex-only operation" below, ranked by effort.
 3. Scopus-ID inputs: resolve once to a DOI, cache, skip per item when Scopus
    is down (medium, touches six tools).
 4. Decide `find_journals` without CiteScore (hard: a decision, not code).
-5. Live checks still open: `--lanes-by-field`, OR-cap chunking, `topic_match`,
-   `work_types`, `set-key` on Windows and Linux.
-6. Mark PR #28 ready only after 1 to 3 and the live checks pass; the PR body
-   lists six design decisions for review.
+5. Live check still open: `set-key` on Windows and Linux.
+6. PR #28 is ready for review; the PR body lists six design decisions.
 
 **Resume.**
 
@@ -49,7 +47,8 @@ uv run pytest -m integration tests/test_integration_topics.py
   config under the `scopus-assistant` entry.
 - OpenAlex `group_by` returns page 1 only, 200 groups at most. Anything that
   needs more must split the query (the quality cut splits by year, then month).
-- The topics test fixtures are hand-built, not recorded live.
+- The topics test fixtures are hand-built, not recorded live. `tests/conftest.py`
+  removes `OPENALEX_API_KEY` from every test; the live tests restore it.
 
 ## Status
 
@@ -323,8 +322,11 @@ then a live run with no Scopus key.
   `search_all(source='openalex')` replaces it. Leave as is.
 
 **Live checks not yet run**
-- [ ] `--lanes-by-field` in `plot_main_path.py`; OR-cap chunking for scopes over
-      50 journals; `topic_match`; `work_types`.
+- [x] (2026-10-11) `--lanes-by-field`, OR-cap chunking (120 ISSNs: 368 papers
+      = 23 + 69 + 276), `topic_match` (any 8,171 vs primary 4,690) and
+      `work_types`: all pass live. Two bugs fixed on the way: papers without a
+      year stretched the plot axis to 0, and unknown work types returned 0
+      silently.
 - [ ] `set-key` on Windows and Linux; CI only covers the argument handling.
 
 ## Release process

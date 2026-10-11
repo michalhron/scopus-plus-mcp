@@ -3,7 +3,7 @@ flows. Run with `pytest -m integration`. They need network access to
 OpenAlex, and the quality cut also needs SCOPUS_API_KEY with Serial Title
 access. Each skips when its API cannot be reached.
 
-All five passed live on 2026-10-11."""
+All passed live on 2026-10-11 (topic_match, work_types and the OR-cap chunking need the OpenAlex budget; a key is advised)."""
 import asyncio
 import json
 import os
@@ -15,6 +15,9 @@ pytestmark = pytest.mark.integration
 
 QUERY = '"digital transformation"'
 REAL_SCOPUS_KEY = os.environ.get('SCOPUS_API_KEY')
+# tests/conftest.py removes OPENALEX_API_KEY from every test, so keep the real
+# one from import time; without it these tests run on the $0.10 anonymous budget.
+REAL_OPENALEX_KEY = os.environ.get('OPENALEX_API_KEY')
 
 
 _LOOP = asyncio.new_event_loop()
@@ -31,6 +34,8 @@ def live(tmp_path, monkeypatch):
     monkeypatch.setenv('SCOPUS_MCP_OUTPUT_DIR', str(tmp_path))
     # Importing the server needs some key; OpenAlex-only calls never use it.
     monkeypatch.setenv('SCOPUS_API_KEY', REAL_SCOPUS_KEY or 'unused')
+    if REAL_OPENALEX_KEY:
+        monkeypatch.setenv('OPENALEX_API_KEY', REAL_OPENALEX_KEY)
     from scopus_mcp import server
     from scopus_mcp.openalex import OpenAlexClient, OpenAlexError
     oa = OpenAlexClient()
@@ -83,3 +88,47 @@ def test_citation_network_reports_field_flows(live):
         'check_completeness': False, 'check_retractions': False})
     assert 'Citation network (openalex)' in text
     assert 'across' in text or 'no citation edge' in text
+
+
+def _total(server, args):
+    text = _call(server, 'publication_counts', {
+        'query': QUERY, 'source': 'openalex', 'from_year': 2021, 'to_year': 2022, **args})
+    return json.loads(text[text.index('{'):])['total']
+
+
+def test_topic_match_any_is_wider_than_primary(live):
+    primary = _total(live, {'topics': ['field:14'], 'topic_match': 'primary'})
+    anywhere = _total(live, {'topics': ['field:14'], 'topic_match': 'any'})
+    assert 0 < primary < anywhere
+
+
+def test_work_types_narrow_the_corpus_and_unknown_types_are_refused(live):
+    default = _total(live, {'topics': ['field:14']})
+    articles = _total(live, {'topics': ['field:14'], 'work_types': ['article']})
+    assert 0 < articles <= default
+    text = _call(live, 'publication_counts', {
+        'query': QUERY, 'source': 'openalex', 'topics': ['field:14'],
+        'work_types': ['nonsense']})
+    assert text.startswith('Error:') and 'conference-paper' in text
+
+
+def test_scope_over_fifty_journals_is_chunked_and_adds_up(live):
+    import httpx
+    key = REAL_OPENALEX_KEY
+    headers = {'Authorization': f'Bearer {key}'} if key else {}
+    resp = httpx.get('https://api.openalex.org/sources', headers=headers, params={
+        'filter': 'type:journal,works_count:>5000', 'sort': 'cited_by_count:desc',
+        'per-page': 120, 'select': 'issn_l'}, timeout=30)
+    if resp.status_code != 200:
+        pytest.skip(f"OpenAlex source list unavailable: {resp.status_code} {resp.text[:120]}")
+    rows = resp.json()['results']
+    issns = [r['issn_l'] for r in rows if r.get('issn_l')][:120]
+    assert len(issns) > 100
+
+    def papers(scope):
+        text = _call(live, 'topic_profile', {
+            'query': QUERY, 'from_year': 2020, 'to_year': 2022, 'scope': ','.join(scope)})
+        return int(re.search(r'Topic profile of (\d+) papers', text).group(1))
+
+    whole = papers(issns)  # three chunks
+    assert whole == sum(papers(issns[i:i + 40]) for i in (0, 40, 80))

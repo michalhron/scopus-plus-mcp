@@ -58,15 +58,24 @@ are pushed yet (see "Release process" in ROADMAP.md).
   (`flow_level` field or subfield), the within-field and cross-field shares,
   the largest cross-field flows and the field of each main-path paper.
   `research_fronts` gives each front its field mix. No extra requests.
-  `plot_main_path.py` has `--lanes-by-field`. Live check: the
-  field-flow report passed against OpenAlex on 2026-10-11; `--lanes-by-field`
-  not yet run.
+  `plot_main_path.py` has `--lanes-by-field`. Live check passed on
+  2026-10-11, including the plot by field and by subfield.
 - `main-path` skill: slicing a field by OpenAlex topics with a quality cut.
 - `main-path` skill in the Claude Code plugin: a guided main path
   analysis from a Scopus query to a drawn map (search path count, global
   main path, key routes, a year-by-lane plot). Written for the tutorial
   "Map a research field with Claude". Scripts run on Python 3 with
   matplotlib, and `main_path.py --selftest` checks the install.
+
+### Fixed
+- `plot_main_path.py`: a paper without a year counted as year 0 and stretched
+  the time axis to 0, squeezing the whole map against the right edge. Found by
+  the live check of `--lanes-by-field`.
+- Unknown `work_types` (for example `nonsense`) matched nothing and returned 0
+  papers without a word. They are refused now, with the list of the 25 types
+  OpenAlex has.
+- The live topic tests ran on the anonymous OpenAlex budget, because the test
+  setup removes `OPENALEX_API_KEY`. They keep the real key now.
 
 ## [0.24.0] - 2026-09-30
 
