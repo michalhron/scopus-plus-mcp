@@ -54,6 +54,26 @@ class OpenAlexError(Exception):
     """An OpenAlex request failed in a way the caller should report."""
 
 
+_AUTHOR_ID = re.compile(r'(?:https?://openalex\.org/)?(A\d+)$', re.IGNORECASE)
+_ORCID = re.compile(r'(?:https?://orcid\.org/)?(\d{4}-\d{4}-\d{4}-\d{3}[\dX])$', re.IGNORECASE)
+AUTHOR_PROFILE_FIELDS = (
+    "id,display_name,display_name_alternatives,orcid,works_count,cited_by_count,"
+    "last_known_institutions,summary_stats,topics,counts_by_year"
+)
+
+
+def openalex_author_key(identifier: str) -> Optional[str]:
+    """Path key for an author lookup: 'A123' or 'orcid:0000-...'; None if neither."""
+    value = (identifier or '').strip()
+    m = _AUTHOR_ID.match(value)
+    if m:
+        return m.group(1).upper()
+    m = _ORCID.match(value)
+    if m:
+        return f"orcid:{m.group(1).upper()}"
+    return None
+
+
 def openalex_work_key(identifier: str) -> Optional[str]:
     """Path key for a work lookup: 'W123' or 'doi:10.x/y'; None if neither.
 
@@ -338,14 +358,23 @@ class OpenAlexClient:
         }) or {}
         return data.get('results') or []
 
-    async def get_work(self, identifier: str) -> Optional[Dict[str, Any]]:
+    async def get_work(self, identifier: str,
+                       select: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Raw work by OpenAlex ID or DOI; None when not found."""
         key = openalex_work_key(identifier)
         if key is None:
             raise ValueError(
                 f"{identifier!r} is not an OpenAlex work ID (W...) or a DOI."
             )
-        return await self._get(f'works/{key}', {'select': WORK_FIELDS})
+        return await self._get(f'works/{key}', {'select': select or WORK_FIELDS})
+
+    async def get_author(self, author_id: str) -> Optional[Dict[str, Any]]:
+        """Raw author by OpenAlex ID (A...) or ORCID; None when not found."""
+        key = openalex_author_key(author_id)
+        if key is None:
+            raise ValueError(
+                f"{author_id!r} is not an OpenAlex author ID (A...) or an ORCID.")
+        return await self._get(f'authors/{key}', {'select': AUTHOR_PROFILE_FIELDS})
 
     async def find_by_title(self, title: str, year: Optional[int] = None) -> Optional[Dict[str, Any]]:
         """Work whose title matches exactly (after normalize_title), within one

@@ -53,17 +53,17 @@ Search the full text of Elsevier (ScienceDirect) journal articles, not just titl
 | `context` | boolean | False | Analyse mentions in the top results' full texts. |
 | `max_context` | integer | 10 | Articles to analyse when context=true (default 10, max 25); one full-text request each. |
 
-### `get_abstract_details`
+### `get_abstract_details` · **OpenAlex**
 
-Retrieve full details for a specific document by Scopus ID.
+Retrieve full details for a document by Scopus ID. With source='openalex', or when no Scopus key is set, a DOI or an OpenAlex work ID (W...) is looked up in OpenAlex instead.
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
-| `scopus_id` | string | required | The Scopus ID of the document. |
+| `scopus_id` | string | required | The Scopus ID of the document, or a DOI / OpenAlex work ID for the OpenAlex route. |
 
-### `resolve_identifier`
+### `resolve_identifier` · **OpenAlex**
 
-Resolve any document identifier (Scopus ID, EID, DOI, or PII) to the full cross-reference set (scopus_id, eid, doi, pii, title). Use this to obtain a DOI for cross-linking with OpenAlex/Crossref, or to normalize an ID before calling other tools.
+Resolve any document identifier (Scopus ID, EID, DOI, or PII) to the full cross-reference set (scopus_id, eid, doi, pii, title). Use this to obtain a DOI for cross-linking with OpenAlex/Crossref, or to normalize an ID before calling other tools. With source='openalex' (or no Scopus key), a DOI or OpenAlex work ID resolves through OpenAlex to openalex_id, doi, pubmed_id, pmcid and title; OpenAlex carries no Scopus ID.
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -80,13 +80,13 @@ Find authors by name, optionally narrowed by affiliation. Scopus (default, needs
 | `affiliation` | string |  | Optional affiliation words to narrow the match, e.g. 'Los Angeles'. |
 | `count` | integer | 10 | Number of authors to return (default 10, max 25). |
 
-### `get_author_profile`
+### `get_author_profile` · **OpenAlex**
 
-Retrieve an author's profile by Author ID.
+Retrieve an author's profile by Scopus Author ID. With source='openalex', or when no Scopus key is set, an OpenAlex author ID (A...) or an ORCID is looked up in OpenAlex instead.
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
-| `author_id` | string | required | The Scopus Author ID. |
+| `author_id` | string | required | The Scopus Author ID, or an OpenAlex author ID / ORCID for the OpenAlex route. |
 
 ### `get_fulltext`
 

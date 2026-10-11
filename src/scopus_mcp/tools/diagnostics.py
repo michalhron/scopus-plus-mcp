@@ -56,11 +56,20 @@ async def _diagnose_connection(arguments: dict) -> list:
 async def _get_quota_status(arguments: dict) -> list:
     srv = server_module()
     client = srv.client
+    openalex = srv.openalex
     quota = await client.get_quota_status()
-    if not quota:
-        return [types.TextContent(type="text", text="No quota information available yet. Please make a request to initialize.")]
-
-    return [types.TextContent(type="text", text=str(quota))]
+    lines = [f"Scopus: {quota}" if quota else
+             "Scopus: no quota information yet (make a Scopus request first)."]
+    budget = {k: v for k, v in (openalex.budget or {}).items() if v is not None}
+    if budget:
+        lines.append(
+            f"OpenAlex: ${budget.get('remaining_usd')} left of ${budget.get('limit_usd')} "
+            f"per day, resets in {budget.get('reset_seconds')} s "
+            f"(key: {'yes, from ' + openalex.key_source if openalex.has_key else 'no, anonymous'}).")
+    else:
+        lines.append("OpenAlex: no budget information yet (make an OpenAlex request first); "
+                     f"key: {'yes, from ' + openalex.key_source if openalex.has_key else 'no, anonymous'}.")
+    return [types.TextContent(type="text", text="\n".join(lines))]
 
 
 async def _get_server_info(arguments: dict) -> list:

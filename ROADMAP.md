@@ -207,6 +207,8 @@ skill-side, so independent of distribution.
 
 ## OpenAlex-only operation (planned 2026-10-11)
 
+Findings, ranking by effort and resume commands: `docs/openalex-only-agenda.md`.
+
 Goal: every tool that can run on OpenAlex does, and the server works when
 Scopus is down or not subscribed. Audit of the 36 tools (code reading only,
 checked at the entry points; not yet run): 21 work on OpenAlex, 5 partly, 10
@@ -227,10 +229,9 @@ are Scopus-only. Order is by how much each unblocks.
 - [x] `docs/configuration.md`: `SCOPUS_API_KEY` is needed for Scopus tools only.
 
 **B. Tools with no OpenAlex branch**
-- [ ] `get_abstract_details`, `resolve_identifier`: resolve DOIs and `W...` IDs
-      through OpenAlex (`get_work`); keep Scopus IDs on Scopus.
-- [ ] `get_author_profile`: OpenAlex author lookup (the OpenAlex branch of
-      `search_authors` exists).
+- [x] `get_abstract_details`, `resolve_identifier`: DOIs and `W...` IDs resolve
+      through OpenAlex; Scopus IDs stay on Scopus (2026-10-11).
+- [x] `get_author_profile`: OpenAlex author ID or ORCID (2026-10-11).
 - [ ] `topic_landscape`: Scopus facets today; build the equivalent from
       OpenAlex `group_by` (topics, fields). `topic_profile` already does most
       of it.
@@ -243,8 +244,8 @@ are Scopus-only. Order is by how much each unblocks.
       aborts the whole call. Return the OpenAlex and Semantic Scholar sets and
       mark the Scopus column unavailable.
 - [ ] `diagnose_connection`, `get_quota_status`: report OpenAlex too (key
-      source, daily budget from the `x-ratelimit-*` headers). Key source is
-      done; budget is not.
+      source, daily budget from the `x-ratelimit-*` headers). Key source and
+      `get_quota_status` budget are done; a reachability check is not.
 
 **C. Partial tools**
 - [ ] `import_records`: `resolve` defaults to Scopus and aborts on error. Fall

@@ -51,7 +51,7 @@
     },
     {
       "name": "get_abstract_details",
-      "description": "Retrieve full details for a specific document by Scopus ID."
+      "description": "Retrieve full details for a document by Scopus ID."
     },
     {
       "name": "resolve_identifier",
@@ -63,7 +63,7 @@
     },
     {
       "name": "get_author_profile",
-      "description": "Retrieve an author's profile by Author ID."
+      "description": "Retrieve an author's profile by Scopus Author ID."
     },
     {
       "name": "get_fulltext",

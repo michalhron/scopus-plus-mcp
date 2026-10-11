@@ -5,12 +5,12 @@ import json
 
 import mcp.types as types
 
-from ..authors import clean_openalex_author, clean_scopus_author, scopus_author_query
+from ..authors import clean_openalex_author, clean_openalex_author_profile, clean_scopus_author, scopus_author_query
 from ..client import FULLTEXT_MIN_CHARS
 from ..fulltext_search import PAGE_SIZE as SD_PAGE_SIZE, analyze_mentions, build_request, clean_result as clean_sd_result
-from ..openalex import clean_openalex_work
+from ..openalex import WORK_FIELDS, clean_openalex_work, openalex_author_key, openalex_work_key
 from ..output import should_write_to_disk, write_fulltext_to_disk, write_results_to_disk
-from ..records import _fetch_abstract_crossref, _fetch_abstract_openalex, clean_abstract_details, clean_author_profile, clean_identifiers, clean_search_results, detect_id_type
+from ..records import _fetch_abstract_crossref, _fetch_abstract_openalex, clean_abstract_details, clean_author_profile, clean_identifiers, clean_openalex_abstract_details, clean_openalex_identifiers, clean_search_results, detect_id_type
 from ..baskets import SCOPE_SCHEMA, resolve_scope, scope_scopus_query
 from ..journal_cut import QUALITY_PROPS
 from ..topics import TOPIC_PROPS, reject_topics_for_scopus
@@ -152,14 +152,19 @@ TOOLS = [
     ),
     types.Tool(
         name="get_abstract_details",
-        description="Retrieve full details for a specific document by Scopus ID.",
+        description=(
+            "Retrieve full details for a document by Scopus ID. With "
+            "source='openalex', or when no Scopus key is set, a DOI or an "
+            "OpenAlex work ID (W...) is looked up in OpenAlex instead."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
                 "scopus_id": {
                     "type": "string",
-                    "description": "The Scopus ID of the document."
-                }
+                    "description": "The Scopus ID of the document, or a DOI / OpenAlex work ID for the OpenAlex route."
+                },
+                "source": SOURCE_SCHEMA,
             },
             "required": ["scopus_id"]
         }
@@ -170,7 +175,10 @@ TOOLS = [
             "Resolve any document identifier (Scopus ID, EID, DOI, or PII) to "
             "the full cross-reference set (scopus_id, eid, doi, pii, title). "
             "Use this to obtain a DOI for cross-linking with OpenAlex/Crossref, "
-            "or to normalize an ID before calling other tools."
+            "or to normalize an ID before calling other tools. With "
+            "source='openalex' (or no Scopus key), a DOI or OpenAlex work ID "
+            "resolves through OpenAlex to openalex_id, doi, pubmed_id, pmcid and "
+            "title; OpenAlex carries no Scopus ID."
         ),
         inputSchema={
             "type": "object",
@@ -183,7 +191,8 @@ TOOLS = [
                     "type": "string",
                     "description": "Optional override of the identifier type.",
                     "enum": ["scopus_id", "eid", "doi", "pii"]
-                }
+                },
+                "source": SOURCE_SCHEMA,
             },
             "required": ["identifier"]
         }
@@ -222,14 +231,19 @@ TOOLS = [
     ),
     types.Tool(
         name="get_author_profile",
-        description="Retrieve an author's profile by Author ID.",
+        description=(
+            "Retrieve an author's profile by Scopus Author ID. With "
+            "source='openalex', or when no Scopus key is set, an OpenAlex "
+            "author ID (A...) or an ORCID is looked up in OpenAlex instead."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
                 "author_id": {
                     "type": "string",
-                    "description": "The Scopus Author ID."
-                }
+                    "description": "The Scopus Author ID, or an OpenAlex author ID / ORCID for the OpenAlex route."
+                },
+                "source": SOURCE_SCHEMA,
             },
             "required": ["author_id"]
         }
@@ -432,12 +446,46 @@ async def _search_fulltext(arguments: dict) -> list:
     return [types.TextContent(type="text", text=json.dumps(summary, indent=2, ensure_ascii=False))]
 
 
+def _lookup_in_openalex(arguments: dict, srv, openalex_form: bool, always: bool = False) -> bool:
+    """True when a single-record lookup should go to OpenAlex: the caller asked
+    for it, or the identifier only exists in OpenAlex form (`always`), or there
+    is no Scopus key and the identifier can be looked up there."""
+    if arguments.get("source"):
+        return _source(arguments) == 'openalex'
+    if openalex_form and (always or not srv.client.api_key):
+        return True
+    return False
+
+
+def _no_openalex_form(kind: str, value: str) -> ValueError:
+    return ValueError(
+        f"{value!r} is not a {kind} that OpenAlex knows. With source='openalex' "
+        f"use a DOI or an OpenAlex work ID (W...)." if kind == 'work identifier' else
+        f"{value!r} is not an OpenAlex author ID (A...) or an ORCID.")
+
+
 async def _get_abstract_details(arguments: dict) -> list:
     srv = server_module()
     client = srv.client
     scopus_id = arguments.get("scopus_id")
     if not scopus_id:
         raise ValueError("scopus_id is required")
+
+    key = openalex_work_key(str(scopus_id))
+    if _lookup_in_openalex(arguments, srv, key is not None, always=bool(key and key.startswith('W'))):
+        if key is None:
+            raise _no_openalex_form('work identifier', scopus_id)
+        work = await srv.openalex.get_work(
+            str(scopus_id), select=WORK_FIELDS + ',abstract_inverted_index')
+        if work is None:
+            return [types.TextContent(type="text", text=f"No OpenAlex record for {scopus_id!r}.")]
+        details = clean_openalex_abstract_details(work)
+        if not details.get('description') and details.get('doi'):
+            abstract = await _fetch_abstract_crossref(details['doi'])
+            if abstract:
+                details['description'] = abstract
+                details['abstract_source'] = 'crossref'
+        return [types.TextContent(type="text", text=str(details))]
 
     raw_data = await client.get_abstract(scopus_id)
     details = clean_abstract_details(raw_data)
@@ -464,6 +512,15 @@ async def _resolve_identifier(arguments: dict) -> list:
     identifier = arguments.get("identifier")
     if not identifier:
         raise ValueError("identifier is required")
+
+    key = openalex_work_key(str(identifier))
+    if _lookup_in_openalex(arguments, srv, key is not None, always=bool(key and key.startswith('W'))):
+        if key is None:
+            raise _no_openalex_form('work identifier', identifier)
+        work = await srv.openalex.get_work(str(identifier))
+        if work is None:
+            return [types.TextContent(type="text", text=f"No OpenAlex record for {identifier!r}.")]
+        return [types.TextContent(type="text", text=str(clean_openalex_identifiers(work)))]
 
     id_type = arguments.get("id_type") or detect_id_type(identifier)
     raw_data = await client.get_abstract_by(identifier, id_type=id_type)
@@ -521,6 +578,15 @@ async def _get_author_profile(arguments: dict) -> list:
     author_id = arguments.get("author_id")
     if not author_id:
         raise ValueError("author_id is required")
+
+    key = openalex_author_key(str(author_id))
+    if _lookup_in_openalex(arguments, srv, key is not None, always=bool(key and key.startswith('A'))):
+        if key is None:
+            raise _no_openalex_form('author', author_id)
+        author = await srv.openalex.get_author(str(author_id))
+        if author is None:
+            return [types.TextContent(type="text", text=f"No OpenAlex author for {author_id!r}.")]
+        return [types.TextContent(type="text", text=str(clean_openalex_author_profile(author)))]
 
     raw_data = await client.get_author(author_id)
     profile = clean_author_profile(raw_data)
