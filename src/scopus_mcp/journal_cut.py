@@ -153,7 +153,7 @@ class CutReport:
             + (f" ({round(100 * pct)}% removed)." if pct is not None else ".")
         ]
         if self.works_without_venue:
-            lines.append(f"{self.works_without_venue} papers have no venue in OpenAlex and are cut.")
+            lines.append(f"{self.works_without_venue} papers have no venue in OpenAlex or sit in venues beyond the 200 largest that OpenAlex returns per request, and are cut. Narrow the topic or the years to bring them in.")
         pd = self.proceedings_dropped
         if pd['venues']:
             lines.append(f"Proceedings or book series dropped: {pd['venues']} venues, "

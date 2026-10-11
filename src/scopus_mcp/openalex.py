@@ -546,21 +546,11 @@ class OpenAlexClient:
     async def group_by(self, filter_expr: str, key: str,
                        max_groups: int = 200) -> Tuple[List[Dict[str, Any]], int]:
         """Grouped counts for a filter: ([{'key', 'key_display_name',
-        'count'}], total works). One request (1 credit) for up to 200 groups;
-        further pages follow only when max_groups is larger."""
-        groups: List[Dict[str, Any]] = []
-        total = 0
-        page = 1
-        while len(groups) < max_groups:
-            params: Dict[str, Any] = {'filter': filter_expr, 'group_by': key}
-            if page > 1:  # one page is OpenAlex's default 200 groups
-                params.update({'per-page': PER_PAGE, 'page': page})
-            data = await self._get('works', params) or {}
-            batch = data.get('group_by') or []
-            total = int((data.get('meta') or {}).get('count') or total)
-            groups.extend(batch)
-            if len(batch) < PER_PAGE:
-                break
-            page += 1
-        groups = groups[:max_groups]
+        'count'}], total works). One request (1 credit). OpenAlex limits
+        group_by to page 1 with at most 200 groups (live check 2026-10-11:
+        asking for page 2 is a 400), so a key with more values is truncated
+        to its 200 largest; callers use `total` to account for the rest."""
+        data = await self._get('works', {'filter': filter_expr, 'group_by': key}) or {}
+        groups = (data.get('group_by') or [])[:max_groups]
+        total = int((data.get('meta') or {}).get('count') or 0)
         return groups, total

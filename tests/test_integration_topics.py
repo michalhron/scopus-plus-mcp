@@ -3,8 +3,7 @@ flows. Run with `pytest -m integration`. They need network access to
 OpenAlex, and the quality cut also needs SCOPUS_API_KEY with Serial Title
 access. Each skips when its API cannot be reached.
 
-The OpenAlex tests passed live on 2026-10-11; the quality cut test needs a
-Scopus key and has not run yet."""
+All five passed live on 2026-10-11."""
 import asyncio
 import json
 import os

@@ -297,3 +297,21 @@ def test_scope_csv_errors(tmp_path):
     with pytest.raises(ValueError, match='no valid ISSNs'):
         resolve_scope(str(empty))
     assert resolve_scope('0276-7783') == ['0276-7783']  # ISSNs and baskets still work
+
+
+def test_group_by_never_asks_for_page_two():
+    """OpenAlex rejects group_by beyond page 1 (live 400, 2026-10-11)."""
+    seen = []
+
+    def handler(request, path, p):
+        if path == 'works' and 'group_by' in p:
+            seen.append(dict(p))
+            if 'page' in p:
+                return httpx.Response(400, json={'error': 'Pagination error.'})
+            groups = [{'key': f'https://openalex.org/S{i}', 'key_display_name': f'J{i}',
+                       'count': 1} for i in range(200)]
+            return httpx.Response(200, json={'meta': {'count': 5000}, 'group_by': groups})
+
+    groups, total = _run(client(taxonomy_router(handler)).group_by(
+        'title_and_abstract.search:x', 'primary_location.source.id', max_groups=2000))
+    assert len(groups) == 200 and total == 5000 and len(seen) == 1

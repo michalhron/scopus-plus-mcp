@@ -23,7 +23,9 @@ are pushed yet (see "Release process" in ROADMAP.md).
   IS, strategy and marketing. Lists journals kept and dropped, venues without
   CiteScore, proceedings dropped and the share removed, with a CSV. Refuses
   without Scopus Serial Title access, since OpenAlex's own measures are not
-  field-relative. Live check: not yet run.
+  field-relative. Live check: passed against OpenAlex and Scopus on
+  2026-10-11. OpenAlex returns at most the 200 largest venues per request, so
+  papers in smaller venues count as cut and the report says so.
 - `scope` takes a CSV path with an ISSN column. OpenAlex scopes over 50
   journals now run in merged, de-duplicated chunks in every tool that takes
   `scope`.
