@@ -6,6 +6,12 @@ are pushed yet (see "Release process" in ROADMAP.md).
 ## [Unreleased]
 
 ### Added
+- The server starts without a Scopus key, so OpenAlex-only use works. Scopus
+  tools then fail with a message that names the missing key and points to
+  `source='openalex'`; `diagnose_connection` skips the network checks and says
+  so. `scripts/smoke_openalex_only.py` runs every tool once in that mode. Live
+  result 2026-10-11: 21 of 29 calls returned results; the eight Scopus-only
+  tools are listed in ROADMAP.md.
 - `scopus-plus-mcp set-key NAME` saves a key (`openalex_api_key`, `api_key`,
   `insttoken`, `core_api_key`, `semantic_scholar_api_key`) in the OS secret
   store; the value is typed at a prompt. `diagnose_connection` now reports

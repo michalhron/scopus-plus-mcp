@@ -213,15 +213,18 @@ checked at the entry points; not yet run): 21 work on OpenAlex, 5 partly, 10
 are Scopus-only. Order is by how much each unblocks.
 
 **A. Startup blocker (do first; nothing else matters until this lands)**
-- [ ] Start without a Scopus key. `server.py` builds `ScopusClient()` at
+- [x] (2026-10-11) Start without a Scopus key. `server.py` builds `ScopusClient()` at
       import and `client.py` raises on a missing key, so even the 21 tools
       that never call Scopus are unreachable. Make the Scopus client lazy or
       optional; Scopus tools then fail with one clear message naming
       `set-key api_key`. The test fixtures set a dummy key to get around this.
-- [ ] Test: start the server and call `search_all(source='openalex')` and
-      `topic_profile` with no Scopus key and no network to Scopus.
-- [ ] `docs/configuration.md` lists `SCOPUS_API_KEY` as required; say it is
-      required only for Scopus tools.
+- [x] Test: `tests/test_client_no_key.py`, `test_server_imports_without_a_scopus_key`,
+      and `scripts/smoke_openalex_only.py`, which calls every tool live with no
+      Scopus key. Result 2026-10-11: 21 of 29 calls ok; `search_scopus`,
+      `search_fulltext`, `get_abstract_details`, `resolve_identifier`,
+      `get_author_profile`, `index_coverage`, `topic_landscape` and
+      `find_journals` fail with the missing-key message (sections B and C below).
+- [x] `docs/configuration.md`: `SCOPUS_API_KEY` is needed for Scopus tools only.
 
 **B. Tools with no OpenAlex branch**
 - [ ] `get_abstract_details`, `resolve_identifier`: resolve DOIs and `W...` IDs

@@ -7,7 +7,7 @@ sits between the two.
 
 | Environment variable | `config.json` field | Default | Purpose |
 | --- | --- | --- | --- |
-| `SCOPUS_API_KEY` | `api_key` | — | Elsevier API key. Required. |
+| `SCOPUS_API_KEY` | `api_key` | — | Elsevier API key. Needed for the Scopus tools only: without it the server still starts and every tool with `source="openalex"` works. |
 | `SCOPUS_INSTTOKEN` | `insttoken` | — | Institutional token (`X-ELS-Insttoken`): subscriber access from any network. |
 | `SCOPUS_PROXY` | `proxy` | — | Proxy for Elsevier traffic only, e.g. `socks5h://127.0.0.1:1080`. See [access](access.md). |
 | `OPENALEX_API_KEY` | `openalex_api_key` | — | Free OpenAlex account key; raises the daily budget from $0.10 to $1. |
