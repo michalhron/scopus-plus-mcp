@@ -3,7 +3,8 @@ flows. Run with `pytest -m integration`. They need network access to
 OpenAlex, and the quality cut also needs SCOPUS_API_KEY with Serial Title
 access. Each skips when its API cannot be reached.
 
-Written without network access to either API, so these have not been run."""
+The OpenAlex tests passed live on 2026-10-11; the quality cut test needs a
+Scopus key and has not run yet."""
 import asyncio
 import json
 import os
@@ -17,12 +18,13 @@ QUERY = '"digital transformation"'
 REAL_SCOPUS_KEY = os.environ.get('SCOPUS_API_KEY')
 
 
+_LOOP = asyncio.new_event_loop()
+
+
 def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+    # One loop for the whole module: the shared httpx client is bound to the
+    # loop it first ran on, so a fresh loop per call breaks it.
+    return _LOOP.run_until_complete(coro)
 
 
 @pytest.fixture

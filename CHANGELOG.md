@@ -15,8 +15,8 @@ are pushed yet (see "Release process" in ROADMAP.md).
   reviews, books and book chapters, because OpenAlex's October 2026
   classifier also gives datasets and specimens topics. The reply opens with
   the resolved scope. OpenAlex records carry `topic_id`, `topic`, `subfield`,
-  `field`, `domain` and `topic_score`. Live check: not yet run, because the
-  build session could not reach OpenAlex.
+  `field`, `domain` and `topic_score`. Live check: topic names, refusal of
+  unknown names and field-scoped search passed against OpenAlex on 2026-10-11.
 - Field-relative quality cut: `min_percentile`, `percentile_rule`,
   `categories` and `include_venues`. Keeps papers from journals at or above a
   CiteScore percentile in their own Scopus category, so one corpus can span
@@ -29,12 +29,14 @@ are pushed yet (see "Release process" in ROADMAP.md).
   `scope`.
 - `topic_profile`: papers and shares by field, subfield and topic, per year
   by field, and the first year each field passed a share threshold. Grouped
-  requests only. Live check: not yet run.
+  requests only. Live check: passed against OpenAlex on 2026-10-11.
 - `citation_network` reports the field-to-field citation matrix
   (`flow_level` field or subfield), the within-field and cross-field shares,
   the largest cross-field flows and the field of each main-path paper.
   `research_fronts` gives each front its field mix. No extra requests.
-  `plot_main_path.py` has `--lanes-by-field`. Live check: not yet run.
+  `plot_main_path.py` has `--lanes-by-field`. Live check: the
+  field-flow report passed against OpenAlex on 2026-10-11; `--lanes-by-field`
+  not yet run.
 - `main-path` skill: slicing a field by OpenAlex topics with a quality cut.
 - `main-path` skill in the Claude Code plugin: a guided main path
   analysis from a Scopus query to a drawn map (search path count, global
