@@ -8,6 +8,9 @@ Usage:
 lanes.json (optional), written by you after reading the papers on the path:
   {"order": ["Lane name 1", "Lane name 2"], "assign": {"<paper id>": "Lane name 1", ...}}
 Papers without a lane go to the first lane.
+
+--lanes-by-field (OpenAlex corpora): one lane per OpenAlex field (or subfield, --lanes-by-field subfield) on
+the path, in order of first appearance, so you see where the path crosses disciplines.
 """
 import argparse, json, re
 import matplotlib
@@ -19,7 +22,8 @@ BLUE, PALE, TEXT, MUTED, GOLD = "#1E64C8", "#F3F6FA", "#1E293B", "#64748B", "#9A
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--corpus", required=True); ap.add_argument("--result", required=True); ap.add_argument("--out", default="map.png")
-ap.add_argument("--lanes"); ap.add_argument("--highlight"); ap.add_argument("--highlight-label", default="Highlighted papers")
+ap.add_argument("--lanes"); ap.add_argument("--lanes-by-field", nargs="?", const="field", choices=["field", "subfield"])
+ap.add_argument("--highlight"); ap.add_argument("--highlight-label", default="Highlighted papers")
 ap.add_argument("--title", default="Main path"); ap.add_argument("--font", default="DejaVu Sans")
 a = ap.parse_args()
 plt.rcParams["font.family"] = a.font
@@ -30,6 +34,9 @@ yr = lambda i: int(float(papers[i].get("year") or 0))
 path, labels = res["main_path"], res["main_path_labels"]
 lanes = {"order": ["Main path"], "assign": {}}
 if a.lanes: lanes = json.load(open(a.lanes, encoding="utf-8"))
+if a.lanes_by_field:
+    assign = {i: papers[i].get(a.lanes_by_field) or "Unclassified" for i in path}
+    lanes = {"order": list(dict.fromkeys(assign[i] for i in path)), "assign": assign}
 order = list(lanes["order"]) + (["__hl"] if a.highlight else [])
 lane_y = {name: len(order) - 1 - i for i, name in enumerate(order)}
 ly = lambda i: lane_y.get(lanes["assign"].get(i, lanes["order"][0]), lane_y[lanes["order"][0]])

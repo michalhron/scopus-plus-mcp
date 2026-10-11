@@ -23,6 +23,7 @@ from ..baskets import (
     scope_scopus_query,
 )
 from ..completeness import RULE_TEXT, assess, external_reference_counts
+from ..field_flows import flow_matrix, has_levels, path_fields, summary_lines
 from ..graphs import _make_node_label
 from ..importers import apply_corpus_file
 from ..retractions import check_dois, status_of
@@ -134,6 +135,16 @@ TOOLS = [
                 **TOPIC_PROPS,
                 **QUALITY_PROPS,
                 "source": SOURCE_SCHEMA,
+                "flow_level": {
+                    "type": "string", "enum": ["field", "subfield"], "default": "field",
+                    "description": (
+                        "OpenAlex only. Level of the field-to-field citation matrix "
+                        "(citing field by cited field, share of within-field and "
+                        "cross-field citations, largest cross-field flows) and of the "
+                        "field labels on the main path. Computed from the records "
+                        "already fetched; no extra requests."
+                    ),
+                },
                 "key_routes": {
                     "type": "integer",
                     "description": (
@@ -430,6 +441,8 @@ def _node(rec, key):
         'venue': rec.get('publication_name'),
         'issn': rec.get('issn'),
         'cited_by_count': rec.get('cited_by_count'),
+        # OpenAlex only; Scopus records have no topic and get no such keys.
+        **{k: rec[k] for k in ('topic', 'subfield', 'field') if rec.get(k)},
     }
 
 
@@ -686,6 +699,13 @@ async def _citation_network(arguments: dict) -> list:
             nodes, edges, set(zip(mp['global_main_path'], mp['global_main_path'][1:])),
             arguments.get("construct_terms") or [], int(arguments.get("max_context_edges") or 300),
             out / f'{base}-edge-coding.csv')
+    level = arguments.get("flow_level") or 'field'
+    if level not in ('field', 'subfield'):
+        raise ValueError("flow_level must be 'field' or 'subfield'")
+    flows = path_flow = None
+    if has_levels(nodes, level):
+        flows = flow_matrix(nodes, [(e['citing'], e['cited']) for e in edges], level)
+        path_flow = path_fields(mp['global_main_path'], nodes, level)
     corpus = {
         'source': source,
         'query': query,
@@ -706,6 +726,9 @@ async def _citation_network(arguments: dict) -> list:
         'server_version': srv.SERVER_VERSION,
     }
     corpus.update({k: v for k, v in scope_report.items() if k != 'topic_scope_summary'})
+    if flows:
+        corpus['field_flows'] = flows
+        corpus['main_path_fields'] = path_flow
     json_path = out / f'{base}.json'
     json_path.write_text(json.dumps(corpus, ensure_ascii=False, indent=2), encoding='utf-8')
     net_path = write_pajek(
@@ -722,6 +745,10 @@ async def _citation_network(arguments: dict) -> list:
     ]
     if scope_report:
         lines.insert(0, scope_report['topic_scope_summary'])
+    if flows:
+        lines += summary_lines(flows)
+        lines.append("Main path fields: " + ' → '.join(path_flow['route'])
+                     + f" ({len(path_flow['crossings'])} crossings).")
     if fetch_errors:
         lines.append(f"Reference lists that failed to load ({len(fetch_errors)}): " + '; '.join(
             f"{key} ({e[:90]})" for key, e in list(fetch_errors.items())[:10]))

@@ -6,6 +6,7 @@ import logging
 import mcp.types as types
 
 from .. import jobs
+from ..field_flows import path_fields
 from ..fronts import (
     cluster_citation_network,
     describe_fronts,
@@ -87,6 +88,7 @@ async def _research_fronts(arguments: dict) -> list:
                     openalex_id=n['id'] if source == 'openalex' else None) for n in nodes.values()]
     main_path = compute_main_path(records)['global_main_path']
     route = path_route(main_path, clustering['front_of'])
+    path_flow = path_fields(main_path, nodes) if any(f.get('field_mix') for f in fronts) else None
 
     label = arguments.get("query") or f"{len(nodes)} papers"
     base = _base_name(f"fronts-{label}")
@@ -99,6 +101,7 @@ async def _research_fronts(arguments: dict) -> list:
     json_path = out / f'{base}.json'
     json_path.write_text(json.dumps({'fronts': fronts, 'front_of': clustering['front_of'],
                                      'main_path': main_path, 'route': route,
+                                     **({'main_path_fields': path_flow} if path_flow else {}),
                                      **{k: v for k, v in scope_report.items() if k != 'topic_scope_summary'}},
                                     ensure_ascii=False, indent=2), encoding='utf-8')
 
@@ -114,12 +117,18 @@ async def _research_fronts(arguments: dict) -> list:
     for f in fronts:
         years = f"{f['years'][0]}–{f['years'][1]}, median {f['median_year']}" if f['years'] else 'years unknown'
         core = '; '.join(f"{p['label']} ({p['lcs']})" for p in f['core_papers'])
+        mix = f.get('field_mix')
+        mix_text = ('; fields: ' + ', '.join(f"{m['field']} {round(100 * m['share'])}%"
+                                              for m in mix['fields'][:3]) + f" ({mix['kind']})") if mix else ''
         lines.append(f"F{f['front']}: {f['size']} papers, {years}, density {f['density']:g}; "
-                     f"keywords: {', '.join(f['keywords']) or '—'}; core: {core}")
+                     f"keywords: {', '.join(f['keywords']) or '—'}{mix_text}; core: {core}")
     if main_path:
         steps = ' → '.join(f"{_make_node_label(nodes[k], k)} [F{route['fronts'][i]}]"
                            for i, k in enumerate(main_path))
         lines.append(f"Main path across fronts: {steps}")
+        if path_flow:
+            lines.append("Main path across fields: " + ' → '.join(path_flow['route'])
+                         + f" ({len(path_flow['crossings'])} crossings).")
         if route['hops']:
             robust = hop_robustness(nodes, route['hops'], min_size=int(arguments.get("min_size") or 3))
             lines.append(f"The path hops {len(route['hops'])} time(s) (in brackets: at how many of the "

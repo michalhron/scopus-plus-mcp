@@ -5,6 +5,7 @@ import math
 from collections import Counter
 from typing import Any, Dict, List, Sequence
 
+from .field_flows import field_mix, has_levels
 from .graphs import _make_node_label
 
 
@@ -60,6 +61,7 @@ def describe_fronts(nodes, clustering, terms_of, top_papers: int = 3) -> List[Di
     lcs = local_citations(nodes)
     g = clustering['graph']
     out = []
+    classified = has_levels(nodes)
     for i, members in enumerate(clustering['fronts'], start=1):
         years = sorted(int(str(nodes[m].get('year'))[:4]) for m in members
                        if str(nodes[m].get('year') or '')[:4].isdigit())
@@ -76,6 +78,8 @@ def describe_fronts(nodes, clustering, terms_of, top_papers: int = 3) -> List[Di
                              'title': nodes[m].get('title')}
                             for m in sorted(members, key=lambda m: (-lcs[m], m))[:top_papers]],
             'members': members,
+            # OpenAlex records only: the disciplines of the front's papers.
+            **({'field_mix': field_mix(members, nodes)} if classified else {}),
         })
     return out
 
