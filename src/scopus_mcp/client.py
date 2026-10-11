@@ -18,6 +18,7 @@ from .config import (
     get_proxy,
     proxy_scheme,
     resolve_api_key,
+    resolve_openalex_key,
     resolve_insttoken,
 )
 from .cache import CacheManager
@@ -937,6 +938,8 @@ class ScopusClient:
             'api_key_source': api_key_source,
             'insttoken_present': self.has_insttoken,
             'insttoken_source': self.insttoken_source,
+            'openalex_key_present': bool(resolve_openalex_key()[0]),
+            'openalex_key_source': resolve_openalex_key()[1],
             'proxy': proxy_scheme(self.proxy),
         }
 

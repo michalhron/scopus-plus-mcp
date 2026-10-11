@@ -6,6 +6,10 @@ are pushed yet (see "Release process" in ROADMAP.md).
 ## [Unreleased]
 
 ### Added
+- `scopus-plus-mcp set-key NAME` saves a key (`openalex_api_key`, `api_key`,
+  `insttoken`, `core_api_key`, `semantic_scholar_api_key`) in the OS secret
+  store; the value is typed at a prompt. `diagnose_connection` now reports
+  whether an OpenAlex key is present and where it came from.
 - OpenAlex topics as a corpus scope. `topics` on `search_all`,
   `publication_counts`, `citation_network`, `research_fronts`, `rpys`,
   `historiograph` and `thematic_evolution` (OpenAlex only) takes topic,

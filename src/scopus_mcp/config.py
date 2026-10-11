@@ -91,6 +91,39 @@ def secret_store_lookup(account: str) -> Optional[str]:
     return _keyring_lookup(account)
 
 
+SECRET_ACCOUNTS = ('api_key', 'insttoken', 'openalex_api_key', 'core_api_key',
+                   'semantic_scholar_api_key')
+
+
+def store_secret(account: str) -> None:
+    """Prompts for a secret and saves it in the OS secret store under the
+    service name SECRET_SERVICE. The value is typed at the prompt, never taken
+    from argv, so it stays out of shell history and the process list.
+    Raises RuntimeError when the store cannot be written."""
+    if account not in SECRET_ACCOUNTS:
+        raise RuntimeError(f"Unknown secret {account!r}; use one of {', '.join(SECRET_ACCOUNTS)}.")
+    if sys.platform == 'darwin':
+        security = shutil.which('security') or '/usr/bin/security'
+        # `-w` as the last option makes security prompt on the terminal (twice).
+        result = subprocess.run([security, 'add-generic-password', '-U',
+                                 '-s', SECRET_SERVICE, '-a', account, '-w'])
+        if result.returncode != 0:
+            raise RuntimeError("The Keychain refused the item (nothing was saved).")
+        return
+    import getpass
+    try:
+        import keyring
+    except ImportError as exc:
+        raise RuntimeError("Install the keyring extra first: pip install 'scopus-plus-mcp[keyring]'.") from exc
+    value = getpass.getpass(f"{account}: ")
+    if not value:
+        raise RuntimeError("Empty value; nothing was saved.")
+    try:
+        keyring.set_password(SECRET_SERVICE, account, value)
+    except Exception as exc:
+        raise RuntimeError(f"The secret store refused the item: {type(exc).__name__}") from exc
+
+
 def _resolve(env_vars: Tuple[str, ...], account: str) -> Tuple[Optional[str], Optional[str]]:
     for var in env_vars:
         value = os.getenv(var)

@@ -55,6 +55,13 @@ uvx --from keyring keyring set scopus-mcp insttoken
 KWallet, and the server installed with the `keyring` extra; then the same
 `keyring set` command.
 
+The server can also write the entry for you, on any platform. It prompts for
+the value, so the key never appears on the command line:
+
+```bash
+uvx scopus-plus-mcp set-key openalex_api_key
+```
+
 Use the account names `api_key`, `insttoken` or `openalex_api_key`. Restart
 your MCP client afterwards, since secrets are read once at startup.
 `diagnose_connection` reports where each secret came from, never its value.
