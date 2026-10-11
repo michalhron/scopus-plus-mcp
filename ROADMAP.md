@@ -268,8 +268,8 @@ are Scopus-only. Order is by how much each unblocks.
 **E. From the live check of the topics work (2026-10-11)**
 - [ ] Live check of `--lanes-by-field`, the OR-cap chunking, `topic_match` and
       `work_types`.
-- [ ] Live check of the year and month split of the quality cut once the
-      OpenAlex budget allows (anonymous: $0.10 per day; a free key raises it).
+- [x] Live check of the year and month split of the quality cut (2026-10-11,
+      with a key: $1 per day; anonymous is $0.10 and one cut costs about that).
 - [ ] Budget guard: before a split that needs more than N requests, report the
       estimate and the remaining daily budget instead of running into a 429.
 - [ ] `set-key` for the Windows and Linux stores has no test on those

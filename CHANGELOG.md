@@ -37,8 +37,10 @@ are pushed yet (see "Release process" in ROADMAP.md).
   2026-10-11. OpenAlex returns at most the 200 largest venues per request, so
   a saturated reply is split by publication year, and a saturated year by
   month, and the venue counts are added up, with a short pause between
-  requests. Live check of the split: not yet run, the anonymous daily budget
-  was spent.
+  requests. Live check of the split passed on 2026-10-11 ("digital
+  transformation", business field, 75th percentile): 701 journals kept instead
+  of 52, 14,532 papers without a venue instead of 28,603, 87% of 45,367 papers
+  removed; about 4 minutes and $0.10 of OpenAlex budget.
 - `scope` takes a CSV path with an ISSN column. OpenAlex scopes over 50
   journals now run in merged, de-duplicated chunks in every tool that takes
   `scope`.
