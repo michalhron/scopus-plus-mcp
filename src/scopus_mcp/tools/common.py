@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from ..baskets import openalex_issn_filter
 from ..journal_cut import apply_quality_cut
 from ..openalex import FilterParts, _search_value, and_filters, openalex_work_key
-from ..topics import build_topic_scope
+from ..topics import build_topic_scope, parse_work_types
 from ..output import _output_dir
 from ..records import clean_abstract_details, to_scopus_id
 
@@ -122,17 +122,24 @@ class OpenAlexScope:
 
 async def resolve_openalex_scope(srv, arguments: dict, query: Optional[str],
                                  issns: Optional[List[str]],
-                                 base_extra: Optional[str] = None) -> OpenAlexScope:
+                                 base_extra: Optional[str] = None,
+                                 default_types: bool = False) -> OpenAlexScope:
     """Topic scope, journal scope and quality cut as one OpenAlex filter.
 
     base_extra (e.g. a year range) narrows the venue discovery of the quality
     cut the same way the search will be narrowed. The quality cut needs a
     query and finds the venues first, so it adds requests (see QUALITY_PROPS).
     """
-    topic_scope = await build_topic_scope(srv.openalex, arguments)
+    topic_scope = await build_topic_scope(srv.openalex, arguments, types_alone=default_types)
     scope_part = openalex_issn_filter(issns) if issns else None
     topic_part = topic_scope.filter if topic_scope else None
     out = OpenAlexScope(topic_scope=topic_scope)
+    if default_types and not topic_scope:
+        # Tools that count papers filter record types even without topics.
+        kept_types = parse_work_types(arguments.get("work_types"))
+        topic_part = ('type:' + '|'.join(kept_types)) if kept_types else None
+        out.lines.append("Record types: " + (', '.join(kept_types) if kept_types else 'all') + ".")
+        out.info['work_types'] = kept_types or 'all'
     if topic_scope:
         out.lines.append(topic_scope.report())
         out.info['topic_scope'] = topic_scope.as_dict()

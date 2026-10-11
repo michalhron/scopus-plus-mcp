@@ -524,6 +524,25 @@ class OpenAlexClient:
                 counts[year] = counts.get(year, 0) + int(g['count'])
         return dict(sorted(counts.items())), total
 
+    async def grouped_counts(self, filter_expr: FilterParts, key: str,
+                             max_groups: int = 200) -> Tuple[Dict[str, Dict[str, Any]], int, int]:
+        """({group id: {'name', 'count'}}, total works, requests).
+
+        Group ids are short IDs ('17' for a field, 'T10346' for a topic) or
+        'unknown' for works without the attribute. A list of filters (chunks
+        of source IDs) is summed, so its chunks must not overlap."""
+        out: Dict[str, Dict[str, Any]] = {}
+        total = calls = 0
+        for f in ([filter_expr] if isinstance(filter_expr, str) else list(filter_expr or [])):
+            groups, n = await self.group_by(f, key, max_groups)
+            calls += max(1, -(-len(groups) // PER_PAGE))
+            total += n
+            for g in groups:
+                gid = short_id(str(g.get('key')))
+                entry = out.setdefault(gid, {'name': g.get('key_display_name'), 'count': 0})
+                entry['count'] += int(g.get('count') or 0)
+        return out, total, calls
+
     async def group_by(self, filter_expr: str, key: str,
                        max_groups: int = 200) -> Tuple[List[Dict[str, Any]], int]:
         """Grouped counts for a filter: ([{'key', 'key_display_name',

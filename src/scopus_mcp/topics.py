@@ -207,13 +207,15 @@ def parse_work_types(value: Any) -> Optional[List[str]]:
     return [t.lower() for t in dict.fromkeys(items)]
 
 
-async def build_topic_scope(openalex, arguments: dict) -> Optional[TopicScope]:
-    """TopicScope from tool arguments; None when no topics were given."""
+async def build_topic_scope(openalex, arguments: dict,
+                            types_alone: bool = False) -> Optional[TopicScope]:
+    """TopicScope from tool arguments; None when no topics were given.
+    types_alone lets work_types stand without topics (the caller applies it)."""
     inputs = arguments.get("topics")
     if isinstance(inputs, str):
         inputs = [t for t in re.split(r'\s*;\s*|\s*\|\s*', inputs) if t]
     if not inputs:
-        if arguments.get("work_types"):
+        if arguments.get("work_types") and not types_alone:
             raise ValueError("work_types applies together with topics.")
         return None
     match = (arguments.get("topic_match") or 'primary').lower()
