@@ -20,7 +20,7 @@ Search for documents in Scopus using a query string.
 
 ### `search_all` · **OpenAlex**
 
-Search Scopus (or OpenAlex with source='openalex') and page through results automatically, returning up to max_results entries in one call. Scopus pages hold SCOPUS_PAGE_SIZE records (default 25) and switch to cursor paging beyond 5,000; OpenAlex pages hold 200. Results over 50 records are written to disk as JSON and CSV. Large max_results values consume significant quota — use conservatively.
+Search Scopus (or OpenAlex with source='openalex') and page through results automatically, returning up to max_results entries in one call. Scopus pages hold SCOPUS_PAGE_SIZE records (default 25) and switch to cursor paging beyond 5,000; OpenAlex pages hold 200. Results over 50 records are written to disk as JSON and CSV. Large max_results values consume significant quota — use conservatively. With source='openalex', topics keeps papers about OpenAlex topics, subfields or fields (default record types: articles, reviews, books, book chapters); one extra request resolves each name, and a scope of more than 50 journals runs one request chain per 50.
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -28,6 +28,9 @@ Search Scopus (or OpenAlex with source='openalex') and page through results auto
 | `max_results` | integer | 200 | Maximum total results to fetch across all pages (default 200). Large values consume quota. |
 | `sort` | string |  | Sort order (e.g., 'coverDate', 'relevancy', 'citedby'). Defaults to 'coverDate' for Scopus, 'relevance' for OpenAlex. |
 | `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `topics` | list of string |  | OpenAlex only. Keep papers about these topics, subfields or fields: topic IDs ('T10346'), 'subfield:1710' or 'field:17' (or 'subfields/1710', 'fields/17'), or exact names ('Digital Transformation'). Several entries combine as OR, all at one level. A name that matches more than one entity, or none exactly, is refused with the candidates listed. Each name costs one extra request (the 26 fields and 252 subfields are fetched once and cached). Combines with scope and quality as AND. Not available with source='scopus'. |
+| `topic_match` | `primary` \| `any` | primary | 'primary' (default) matches the one topic OpenAlex ranks first for a paper: a tighter corpus. 'any' matches a paper when any of its assigned topics (up to three) is in the scope: wider, and it catches papers that sit between fields. |
+| `work_types` |  |  | With topics: the OpenAlex record types to keep. Default ['article', 'review', 'book', 'book-chapter'], which leaves out datasets, specimens, proposals and other records that now receive topics. 'all' keeps every type. |
 | `inline` | `sample` \| `compact` \| `full` | sample | What comes back in the reply when results go to files (over 50 records). 'sample' (default): the first 10. 'compact': every record as one JSON line of key fields (IDs, DOI, year, first author, title, venue, ISSN, citations): use it when the caller cannot read the server's files, e.g. from a cloud session. 'full': every record in full (large). |
 
 ### `search_fulltext`
@@ -163,6 +166,9 @@ Direct-citation network within a set of papers, in one call: fetches every paper
 | `max_results` | integer | 300 | With query: how many papers to include (default 300). |
 | `corpus_file` | string |  | A corpus file from import_records, instead of ids or query. |
 | `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `topics` | list of string |  | OpenAlex only. Keep papers about these topics, subfields or fields: topic IDs ('T10346'), 'subfield:1710' or 'field:17' (or 'subfields/1710', 'fields/17'), or exact names ('Digital Transformation'). Several entries combine as OR, all at one level. A name that matches more than one entity, or none exactly, is refused with the candidates listed. Each name costs one extra request (the 26 fields and 252 subfields are fetched once and cached). Combines with scope and quality as AND. Not available with source='scopus'. |
+| `topic_match` | `primary` \| `any` | primary | 'primary' (default) matches the one topic OpenAlex ranks first for a paper: a tighter corpus. 'any' matches a paper when any of its assigned topics (up to three) is in the scope: wider, and it catches papers that sit between fields. |
+| `work_types` |  |  | With topics: the OpenAlex record types to keep. Default ['article', 'review', 'book', 'book-chapter'], which leaves out datasets, specimens, proposals and other records that now receive topics. 'all' keeps every type. |
 | `key_routes` | integer | 10 | Number of top-SPC key edges to extend into key-route main paths (Liu & Lu 2012; default 10, 0 = none). Key edges that extend into the same route are merged. |
 | `check_completeness` | boolean | True | Compare each reference list with an independent count (default true). |
 | `weight` | `spc` \| `splc` \| `spnp` | spc | Traversal weight for the main paths and key routes: 'spc' (search path count, source-to-sink paths), 'splc' (search path link count: paths starting at any paper), 'spnp' (search path node pair: paths between any two papers). Liu & Lu 2012. |
@@ -187,6 +193,9 @@ Garfield's historiograph: the papers most cited within the set (local citation s
 | `corpus_file` | string |  | A corpus file from import_records, instead of ids or query. |
 | `max_results` | integer | 300 | With query: how many papers to include (default 300). |
 | `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `topics` | list of string |  | OpenAlex only. Keep papers about these topics, subfields or fields: topic IDs ('T10346'), 'subfield:1710' or 'field:17' (or 'subfields/1710', 'fields/17'), or exact names ('Digital Transformation'). Several entries combine as OR, all at one level. A name that matches more than one entity, or none exactly, is refused with the candidates listed. Each name costs one extra request (the 26 fields and 252 subfields are fetched once and cached). Combines with scope and quality as AND. Not available with source='scopus'. |
+| `topic_match` | `primary` \| `any` | primary | 'primary' (default) matches the one topic OpenAlex ranks first for a paper: a tighter corpus. 'any' matches a paper when any of its assigned topics (up to three) is in the scope: wider, and it catches papers that sit between fields. |
+| `work_types` |  |  | With topics: the OpenAlex record types to keep. Default ['article', 'review', 'book', 'book-chapter'], which leaves out datasets, specimens, proposals and other records that now receive topics. 'all' keeps every type. |
 | `top` | integer | 30 | Papers to draw, by local citation score (default 30). |
 
 ### `rpys` · **OpenAlex**
@@ -200,6 +209,9 @@ Reference Publication Year Spectroscopy (Marx et al. 2014): counts every cited r
 | `corpus_file` | string |  | A corpus file from import_records, instead of ids or query. |
 | `max_results` | integer | 300 | With query: how many papers to include (default 300). |
 | `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `topics` | list of string |  | OpenAlex only. Keep papers about these topics, subfields or fields: topic IDs ('T10346'), 'subfield:1710' or 'field:17' (or 'subfields/1710', 'fields/17'), or exact names ('Digital Transformation'). Several entries combine as OR, all at one level. A name that matches more than one entity, or none exactly, is refused with the candidates listed. Each name costs one extra request (the 26 fields and 252 subfields are fetched once and cached). Combines with scope and quality as AND. Not available with source='scopus'. |
+| `topic_match` | `primary` \| `any` | primary | 'primary' (default) matches the one topic OpenAlex ranks first for a paper: a tighter corpus. 'any' matches a paper when any of its assigned topics (up to three) is in the scope: wider, and it catches papers that sit between fields. |
+| `work_types` |  |  | With topics: the OpenAlex record types to keep. Default ['article', 'review', 'book', 'book-chapter'], which leaves out datasets, specimens, proposals and other records that now receive topics. 'all' keeps every type. |
 | `from_year` | integer | 1900 | Earliest cited year to count (default 1900). |
 | `to_year` | integer |  | Latest cited year (default: this year). |
 | `top_peaks` | integer | 10 | Peaks to report (default 10). |
@@ -215,6 +227,9 @@ Research fronts of a paper set: Louvain communities of its direct-citation netwo
 | `corpus_file` | string |  | A corpus file from import_records, instead of ids or query. |
 | `max_results` | integer | 300 | With query: how many papers to include (default 300). |
 | `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `topics` | list of string |  | OpenAlex only. Keep papers about these topics, subfields or fields: topic IDs ('T10346'), 'subfield:1710' or 'field:17' (or 'subfields/1710', 'fields/17'), or exact names ('Digital Transformation'). Several entries combine as OR, all at one level. A name that matches more than one entity, or none exactly, is refused with the candidates listed. Each name costs one extra request (the 26 fields and 252 subfields are fetched once and cached). Combines with scope and quality as AND. Not available with source='scopus'. |
+| `topic_match` | `primary` \| `any` | primary | 'primary' (default) matches the one topic OpenAlex ranks first for a paper: a tighter corpus. 'any' matches a paper when any of its assigned topics (up to three) is in the scope: wider, and it catches papers that sit between fields. |
+| `work_types` |  |  | With topics: the OpenAlex record types to keep. Default ['article', 'review', 'book', 'book-chapter'], which leaves out datasets, specimens, proposals and other records that now receive topics. 'all' keeps every type. |
 | `resolution` | number | 1.0 | Louvain resolution: above 1 gives more, smaller fronts (default 1). |
 | `min_size` | integer | 3 | Smallest front reported; smaller groups count as unclustered (default 3). |
 
@@ -296,13 +311,16 @@ Retractions, withdrawals, expressions of concern and corrections for a set of pa
 
 ### `publication_counts` · **OpenAlex**
 
-Count publications per year for a query, e.g. to chart how attention to a topic rose and fell. Scopus: your query in Scopus syntax, one request per year, so from_year and to_year are required (at most 60 years). OpenAlex: plain words matched against title and abstract (quote phrases), one request for all years. The two sources count differently; compare trends within one source, not levels across sources.
+Count publications per year for a query, e.g. to chart how attention to a topic rose and fell. Scopus: your query in Scopus syntax, one request per year, so from_year and to_year are required (at most 60 years). OpenAlex: plain words matched against title and abstract (quote phrases), one request for all years. The two sources count differently; compare trends within one source, not levels across sources. With source='openalex', topics restricts the count to OpenAlex topics, subfields or fields (one extra request per name to resolve it).
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
 | `query` | string | required | Scopus: Scopus syntax, e.g. 'TITLE-ABS-KEY("organizing vision")'. OpenAlex: e.g. '"organizing vision"'. |
 | `from_year` | integer |  | First year (inclusive). |
 | `to_year` | integer |  | Last year (inclusive). |
+| `topics` | list of string |  | OpenAlex only. Keep papers about these topics, subfields or fields: topic IDs ('T10346'), 'subfield:1710' or 'field:17' (or 'subfields/1710', 'fields/17'), or exact names ('Digital Transformation'). Several entries combine as OR, all at one level. A name that matches more than one entity, or none exactly, is refused with the candidates listed. Each name costs one extra request (the 26 fields and 252 subfields are fetched once and cached). Combines with scope and quality as AND. Not available with source='scopus'. |
+| `topic_match` | `primary` \| `any` | primary | 'primary' (default) matches the one topic OpenAlex ranks first for a paper: a tighter corpus. 'any' matches a paper when any of its assigned topics (up to three) is in the scope: wider, and it catches papers that sit between fields. |
+| `work_types` |  |  | With topics: the OpenAlex record types to keep. Default ['article', 'review', 'book', 'book-chapter'], which leaves out datasets, specimens, proposals and other records that now receive topics. 'all' keeps every type. |
 
 ### `topic_landscape`
 
@@ -329,6 +347,9 @@ Themes of a corpus and how they change over time (Cobo et al. 2011; as in biblio
 | `corpus_file` | string |  | A corpus file from import_records, instead of ids or query. |
 | `max_results` | integer | 300 | With query: how many papers to include (default 300). |
 | `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `topics` | list of string |  | OpenAlex only. Keep papers about these topics, subfields or fields: topic IDs ('T10346'), 'subfield:1710' or 'field:17' (or 'subfields/1710', 'fields/17'), or exact names ('Digital Transformation'). Several entries combine as OR, all at one level. A name that matches more than one entity, or none exactly, is refused with the candidates listed. Each name costs one extra request (the 26 fields and 252 subfields are fetched once and cached). Combines with scope and quality as AND. Not available with source='scopus'. |
+| `topic_match` | `primary` \| `any` | primary | 'primary' (default) matches the one topic OpenAlex ranks first for a paper: a tighter corpus. 'any' matches a paper when any of its assigned topics (up to three) is in the scope: wider, and it catches papers that sit between fields. |
+| `work_types` |  |  | With topics: the OpenAlex record types to keep. Default ['article', 'review', 'book', 'book-chapter'], which leaves out datasets, specimens, proposals and other records that now receive topics. 'all' keeps every type. |
 | `cut_years` | list of integer |  | First years of the later periods, e.g. [2005, 2012] gives up to 2004, 2005-2011 and 2012 on. Default: n_periods of similar size. |
 | `n_periods` | integer | 3 | Periods of similar paper counts when cut_years is not given (default 3). |
 | `terms` | `author_keywords` \| `all_keywords` \| `title_abstract` | author_keywords | 'author_keywords' (default; papers without them fall back to Scopus index terms), 'all_keywords' (author keywords plus index terms), 'title_abstract' (phrases from title and abstract; for corpora with few keywords). With source='openalex', keywords are OpenAlex's own. |

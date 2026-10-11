@@ -77,7 +77,8 @@ async def _keywords(srv, arguments, nodes):
 async def _research_fronts(arguments: dict) -> list:
     srv = server_module()
     source = _source(arguments)
-    nodes, fetch_errors, parse_errors, _ = await collect_corpus(srv, arguments)
+    scope_report = {}
+    nodes, fetch_errors, parse_errors, _ = await collect_corpus(srv, arguments, scope_report)
     clustering = cluster_citation_network(nodes, float(arguments.get("resolution") or 1.0),
                                           int(arguments.get("min_size") or 3))
     terms_of = await _keywords(srv, arguments, nodes)
@@ -97,11 +98,12 @@ async def _research_fronts(arguments: dict) -> list:
     clu = write_pajek_partition(order, clustering['front_of'], out / f'{base}.clu')
     json_path = out / f'{base}.json'
     json_path.write_text(json.dumps({'fronts': fronts, 'front_of': clustering['front_of'],
-                                     'main_path': main_path, 'route': route},
+                                     'main_path': main_path, 'route': route,
+                                     **({'topic_scope': scope_report['topic_scope']} if scope_report else {})},
                                     ensure_ascii=False, indent=2), encoding='utf-8')
 
     unclustered = sum(1 for f in clustering['front_of'].values() if f == 0)
-    lines = [f"Research fronts of {len(nodes)} papers ({source}): {len(fronts)} fronts "
+    lines = ([scope_report['topic_scope_summary']] if scope_report else []) + [f"Research fronts of {len(nodes)} papers ({source}): {len(fronts)} fronts "
              f"(Louvain on direct citations, resolution {arguments.get('resolution') or 1.0}); "
              f"{unclustered} papers unclustered.",
              f"Server version: {srv.SERVER_VERSION}",

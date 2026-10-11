@@ -27,8 +27,9 @@ from ..graphs import _make_node_label
 from ..importers import apply_corpus_file
 from ..retractions import check_dois, status_of
 from ..lineage import WEIGHTS, compute_main_path, key_route_paths, main_path_robustness, write_pajek
-from ..openalex import bare_doi, clean_openalex_work, normalize_title, openalex_work_key, short_id
+from ..openalex import and_filters, bare_doi, clean_openalex_work, normalize_title, openalex_work_key, short_id
 from ..output import _output_dir, _query_slug
+from ..topics import TOPIC_PROPS, build_topic_scope, reject_topics_for_scopus
 from ..records import (
     clean_abstract_details,
     clean_references,
@@ -129,6 +130,7 @@ TOOLS = [
                     "description": "A corpus file from import_records, instead of ids or query.",
                 },
                 "scope": SCOPE_SCHEMA,
+                **TOPIC_PROPS,
                 "source": SOURCE_SCHEMA,
                 "key_routes": {
                     "type": "integer",
@@ -505,9 +507,15 @@ async def _collect_scopus(client, arguments):
     return nodes, fetch_errors, parse_errors, refs_by_id
 
 
-async def _collect_openalex(openalex, arguments):
+async def _collect_openalex(openalex, arguments, report=None):
     ids, query = arguments.get("ids"), arguments.get("query")
     issns = resolve_scope(arguments.get("scope"))
+    topic_scope = await build_topic_scope(openalex, arguments)
+    if topic_scope and ids:
+        raise ValueError("topics filter a query; with ids, pass only in-scope papers.")
+    if report is not None and topic_scope:
+        report['topic_scope'] = topic_scope.as_dict()
+        report['topic_scope_summary'] = topic_scope.report()
     works, fetch_errors, parse_errors = [], {}, {}
     if ids:
         for i in ids:
@@ -516,7 +524,9 @@ async def _collect_openalex(openalex, arguments):
             except Exception as exc:
                 fetch_errors[str(i)] = _err(exc)
     else:
-        kwargs = {'extra_filter': openalex_issn_filter(issns)} if issns else {}
+        extra = and_filters(openalex_issn_filter(issns) if issns else None,
+                            topic_scope.filter if topic_scope else None)
+        kwargs = {'extra_filter': extra} if extra else {}
         works, _ = await openalex.search(query, max_results=int(arguments.get("max_results", 300)),
                                          sort='citedby', **kwargs)
     nodes, ref_ids = {}, {}
@@ -536,10 +546,11 @@ async def _collect_openalex(openalex, arguments):
     return nodes, fetch_errors, parse_errors, ref_ids
 
 
-async def collect_corpus(srv, arguments):
+async def collect_corpus(srv, arguments, report=None):
     """(nodes, fetch_errors, parse_errors, references) for ids or a query.
     references: cleaned Scopus reference lists, or OpenAlex referenced-work
-    IDs, per paper."""
+    IDs, per paper. A `report` dict, when given, receives the resolved topic
+    scope."""
     arguments = apply_corpus_file(arguments, _source(arguments))
     ids, query = arguments.get("ids"), arguments.get("query")
     if bool(ids) == bool(query):
@@ -547,8 +558,9 @@ async def collect_corpus(srv, arguments):
     if ids and len(ids) > MAX_CORPUS:
         raise ValueError(f"At most {MAX_CORPUS} ids per call.")
     if _source(arguments) == 'openalex':
-        out = await _collect_openalex(srv.openalex, arguments)
+        out = await _collect_openalex(srv.openalex, arguments, report)
     else:
+        reject_topics_for_scopus(arguments)
         out = await _collect_scopus(srv.client, arguments)
     if not out[0]:
         raise ValueError("No papers found for the given ids or query.")
@@ -620,7 +632,8 @@ async def _citation_network(arguments: dict) -> list:
     k = int(arguments.get("key_routes", 10))
     check = arguments.get("check_completeness", True)
 
-    nodes, fetch_errors, parse_errors, _ = await collect_corpus(srv, arguments)
+    scope_report = {}
+    nodes, fetch_errors, parse_errors, _ = await collect_corpus(srv, arguments, scope_report)
     errors = {**fetch_errors, **parse_errors}
     missing = [key for key in nodes if key in errors]
 
@@ -688,6 +701,8 @@ async def _citation_network(arguments: dict) -> list:
         'completeness_rule': RULE_TEXT,
         'server_version': srv.SERVER_VERSION,
     }
+    if scope_report:
+        corpus['topic_scope'] = scope_report['topic_scope']
     json_path = out / f'{base}.json'
     json_path.write_text(json.dumps(corpus, ensure_ascii=False, indent=2), encoding='utf-8')
     net_path = write_pajek(
@@ -702,6 +717,8 @@ async def _citation_network(arguments: dict) -> list:
         f"Citation network ({source}): {len(nodes)} papers, {len(edges)} within-set "
         f"citation edges, {len(isolated)} papers with no edge.",
     ]
+    if scope_report:
+        lines.insert(0, scope_report['topic_scope_summary'])
     if fetch_errors:
         lines.append(f"Reference lists that failed to load ({len(fetch_errors)}): " + '; '.join(
             f"{key} ({e[:90]})" for key, e in list(fetch_errors.items())[:10]))

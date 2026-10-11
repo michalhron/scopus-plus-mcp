@@ -12,6 +12,8 @@ from ..openalex import clean_openalex_work
 from ..output import should_write_to_disk, write_fulltext_to_disk, write_results_to_disk
 from ..records import _fetch_abstract_crossref, _fetch_abstract_openalex, clean_abstract_details, clean_author_profile, clean_identifiers, clean_search_results, detect_id_type
 from ..baskets import SCOPE_SCHEMA, openalex_issn_filter, resolve_scope, scope_scopus_query
+from ..openalex import and_filters
+from ..topics import TOPIC_PROPS, build_topic_scope, reject_topics_for_scopus
 from .common import SOURCE_SCHEMA, _source, server_module
 
 logger = logging.getLogger("scopus-plus-mcp")
@@ -62,7 +64,11 @@ TOOLS = [
             "Scopus pages hold SCOPUS_PAGE_SIZE records (default 25) and switch to "
             "cursor paging beyond 5,000; OpenAlex pages hold 200. Results over 50 "
             "records are written to disk as JSON and CSV. Large max_results values "
-            "consume significant quota — use conservatively."
+            "consume significant quota — use conservatively. With "
+            "source='openalex', topics keeps papers about OpenAlex topics, "
+            "subfields or fields (default record types: articles, reviews, "
+            "books, book chapters); one extra request resolves each name, and "
+            "a scope of more than 50 journals runs one request chain per 50."
         ),
         inputSchema={
             "type": "object",
@@ -89,6 +95,7 @@ TOOLS = [
                 },
                 "source": SOURCE_SCHEMA,
                 "scope": SCOPE_SCHEMA,
+                **TOPIC_PROPS,
                 "inline": {
                     "type": "string",
                     "enum": ["sample", "compact", "full"],
@@ -308,10 +315,16 @@ async def _search_all(arguments: dict) -> list:
     if inline not in ("sample", "compact", "full"):
         raise ValueError("inline must be 'sample', 'compact' or 'full'")
     issns = resolve_scope(arguments.get("scope"))
+    topic_scope = None
+    if source != 'openalex':
+        reject_topics_for_scopus(arguments)
 
     if source == 'openalex':
         sort = arguments.get("sort", "relevance")
-        kwargs = {'extra_filter': openalex_issn_filter(issns)} if issns else {}
+        topic_scope = await build_topic_scope(openalex, arguments)
+        extra = and_filters(openalex_issn_filter(issns) if issns else None,
+                            topic_scope.filter if topic_scope else None)
+        kwargs = {'extra_filter': extra} if extra else {}
         works, meta = await openalex.search(query, max_results=max_results, sort=sort, **kwargs)
         results = [clean_openalex_work(w) for w in works]
     else:
@@ -346,6 +359,8 @@ async def _search_all(arguments: dict) -> list:
 
     if source == 'openalex':
         text = "Source: OpenAlex (title and abstract search).\n" + text
+        if topic_scope:
+            text = topic_scope.report() + "\n" + text
     if meta.get('note'):
         text += f"\n\nNote: {meta['note']}"
 

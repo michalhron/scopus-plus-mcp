@@ -9,6 +9,8 @@ OpenAlex source ISSNs include both.
 import re
 from typing import Dict, List, Optional, Union
 
+from .openalex import chunk_or
+
 # AIS Senior Scholars' Basket of Eight.
 BASKET_OF_EIGHT = {
     'European Journal of Information Systems': ['0960-085X', '1476-9344'],
@@ -87,6 +89,10 @@ def scope_scopus_query(query: str, issns: Optional[List[str]]) -> str:
     return f'({query}) AND {scopus_issn_clause(issns)}'
 
 
-def openalex_issn_filter(issns: List[str]) -> str:
-    """OpenAlex filter fragment: primary_location.source.issn:a|b|..."""
-    return 'primary_location.source.issn:' + '|'.join(issns)
+def openalex_issn_filter(issns: List[str]) -> Union[str, List[str]]:
+    """OpenAlex filter fragment: primary_location.source.issn:a|b|...
+
+    Long lists are split into chunks of OR_CHUNK ISSNs and come back as a list
+    of alternatives; the OpenAlex client runs one request chain per chunk and
+    merges the results."""
+    return chunk_or('primary_location.source.issn', issns)

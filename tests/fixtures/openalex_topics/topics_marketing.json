@@ -1,0 +1,17 @@
+{
+  "meta": {
+    "count": 0,
+    "page": 1,
+    "per_page": 200
+  },
+  "results": [
+    {
+      "id": "https://openalex.org/T11111",
+      "display_name": "Marketing"
+    },
+    {
+      "id": "https://openalex.org/T11112",
+      "display_name": "Marketing Strategy"
+    }
+  ]
+}

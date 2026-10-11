@@ -9,6 +9,8 @@ import mcp.types as types
 
 from .. import jobs
 from ..baskets import openalex_issn_filter, resolve_scope, scope_scopus_query
+from ..openalex import and_filters
+from ..topics import build_topic_scope, reject_topics_for_scopus
 from ..importers import load_corpus_file
 from ..openalex import clean_openalex_work, short_id
 from ..output import _output_dir
@@ -118,13 +120,20 @@ async def _collect_scopus_docs(client, arguments, mode):
     return docs
 
 
-async def _collect_openalex_docs(openalex, arguments, mode):
+async def _collect_openalex_docs(openalex, arguments, mode, report=None):
     ids, query = arguments.get("ids"), arguments.get("query")
     issns = resolve_scope(arguments.get("scope"))
+    topic_scope = await build_topic_scope(openalex, arguments)
+    if topic_scope and ids:
+        raise ValueError("topics filter a query; with ids, pass only in-scope papers.")
+    if report is not None and topic_scope:
+        report['summary'] = topic_scope.report()
     if ids:
         works = [await _resolve_openalex_work(i) for i in ids]
     else:
-        kwargs = {'extra_filter': openalex_issn_filter(issns)} if issns else {}
+        extra = and_filters(openalex_issn_filter(issns) if issns else None,
+                            topic_scope.filter if topic_scope else None)
+        kwargs = {'extra_filter': extra} if extra else {}
         works, _ = await openalex.search(query, max_results=int(arguments.get("max_results", 300)),
                                          sort='citedby', **kwargs)
     by_id = {short_id(w['id']): w for w in works}
@@ -179,12 +188,14 @@ async def _thematic_evolution(arguments: dict) -> list:
     if mode not in TERM_MODES:
         raise ValueError(f"terms must be one of {', '.join(TERM_MODES)}")
     source = _source(arguments)
+    scope_report = {}
     if from_file:
         source = 'corpus file'
         docs = _docs_from_file(load_corpus_file(from_file), mode)
     elif source == 'openalex':
-        docs = await _collect_openalex_docs(srv.openalex, arguments, mode)
+        docs = await _collect_openalex_docs(srv.openalex, arguments, mode, scope_report)
     else:
+        reject_topics_for_scopus(arguments)
         docs = await _collect_scopus_docs(srv.client, arguments, mode)
     if not docs:
         raise ValueError("No dated papers found for the given ids or query.")
@@ -228,7 +239,7 @@ async def _thematic_evolution(arguments: dict) -> list:
     kinds = {}
     for d in docs:
         kinds[d['kind']] = kinds.get(d['kind'], 0) + 1
-    lines = [f"Thematic evolution of {len(docs)} papers ({source}; terms: {mode}; "
+    lines = ([scope_report['summary']] if scope_report else []) + [f"Thematic evolution of {len(docs)} papers ({source}; terms: {mode}; "
              + ', '.join(f"{k} {v}" for k, v in sorted(kinds.items())) + ").",
              f"Server version: {srv.SERVER_VERSION}",
              f"JSON: {json_path}", f"CSV: {csv_path}"]

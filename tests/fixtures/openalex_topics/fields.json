@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "count": 0,
+    "page": 1,
+    "per_page": 200
+  },
+  "results": [
+    {
+      "id": "https://openalex.org/fields/17",
+      "display_name": "Computer Science"
+    },
+    {
+      "id": "https://openalex.org/fields/14",
+      "display_name": "Business, Management and Accounting"
+    },
+    {
+      "id": "https://openalex.org/fields/18",
+      "display_name": "Decision Sciences"
+    }
+  ]
+}
