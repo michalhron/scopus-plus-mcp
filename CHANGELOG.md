@@ -12,7 +12,7 @@ are pushed yet (see "Release process" in ROADMAP.md).
   exists in OpenAlex form (W..., A...), or when no Scopus key is set.
   `get_quota_status` also shows the OpenAlex daily budget. Live check passed
   2026-10-11. The remaining Scopus-only tools are planned in
-  `docs/openalex-only-agenda.md`.
+  ROADMAP.md.
 - The server starts without a Scopus key, so OpenAlex-only use works. Scopus
   tools then fail with a message that names the missing key and points to
   `source='openalex'`; `diagnose_connection` skips the network checks and says
