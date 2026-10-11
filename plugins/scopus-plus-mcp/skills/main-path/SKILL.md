@@ -21,6 +21,9 @@ Write one Scopus query with both: the topic terms in TITLE-ABS-KEY, the journals
 Journals are one way to slice a field into a set of papers. For IS topics, the Litbaskets baskets
 (Wang, Boell and Ciriello 2026) are one option. For any field Scopus indexes, call `find_journals`
 with the subject areas the topic touches and a percentile cut-off (`min_percentile=75` keeps the top quarter).
+On OpenAlex, `topics` with `min_percentile=75` slices a field by what papers say and keeps the good journals of each
+field, so one corpus can span IS, strategy and marketing. Topics follow the content, journal sets follow where papers
+appear. Test a cross-field corpus against a single-field basket to see whether the main path holds.
 Run `search_scopus` first and report the count. Between 300 and 2,000 papers works well.
 Too few and the path is thin. Too many and the reference pull gets slow.
 
@@ -53,7 +56,8 @@ the backbone and every link weight (also as CSV). Run `--selftest` once to check
 
 Lanes are optional. Read the papers on the path with the user and group them by the question each one
 asks. Write the groups to `lanes.json` as `{"order": [...], "assign": {"<id>": "<lane>"}}`.
-`--highlight` puts papers whose titles match a pattern in a band at the bottom, so the user can see
+On an OpenAlex corpus, `--lanes-by-field` gives each discipline on the path its own lane, so the user sees where the
+path crosses fields. `--highlight` puts papers whose titles match a pattern in a band at the bottom, so the user can see
 whether a new topic reaches the path.
 
 ## Read it with care
