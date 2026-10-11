@@ -18,7 +18,7 @@ server, so any MCP client can use it: Claude Desktop, Claude Code, Cursor.
 
 <table>
 <tr><td width="50%" valign="top"><img src="https://raw.githubusercontent.com/michalhron/scopus-plus-mcp/main/docs/assets/icon-networks.svg" width="48" height="48" alt="" align="left"><b>Citation networks</b><br>Coupling, co-citation, multi-generation lineages and the network within any paper set, with SPC/SPLC/SPNP main paths, key routes, RPYS and a historiograph. <a href="docs/networks.md">More</a></td><td width="50%" valign="top"><img src="https://raw.githubusercontent.com/michalhron/scopus-plus-mcp/main/docs/assets/icon-audit.svg" width="48" height="48" alt="" align="left"><b>Audited, not just built</b><br>Citer sets verified across search strategies, reference lists checked against Crossref, and the sentences behind each citation. <a href="docs/audit.md">More</a></td></tr>
-<tr><td width="50%" valign="top"><img src="https://raw.githubusercontent.com/michalhron/scopus-plus-mcp/main/docs/assets/icon-sources.svg" width="48" height="48" alt="" align="left"><b>Two data sources</b><br>Scopus by default. Add <code>source="openalex"</code> to run the same analyses without a Scopus subscription. <a href="docs/data-sources.md">More</a></td><td width="50%" valign="top"><img src="https://raw.githubusercontent.com/michalhron/scopus-plus-mcp/main/docs/assets/icon-bibliometrics.svg" width="48" height="48" alt="" align="left"><b>Bibliometrics</b><br>Where a topic is published and in which quartile, journals above a percentile cut-off, counts per year, themes over time, BibTeX. <a href="docs/bibliometrics.md">More</a></td></tr>
+<tr><td width="50%" valign="top"><img src="https://raw.githubusercontent.com/michalhron/scopus-plus-mcp/main/docs/assets/icon-sources.svg" width="48" height="48" alt="" align="left"><b>Two data sources</b><br>Scopus by default. Add <code>source="openalex"</code> to run the same analyses without a Scopus subscription. OpenAlex topics with a field-relative journal quality cut build corpora that span disciplines. <a href="docs/data-sources.md">More</a></td><td width="50%" valign="top"><img src="https://raw.githubusercontent.com/michalhron/scopus-plus-mcp/main/docs/assets/icon-bibliometrics.svg" width="48" height="48" alt="" align="left"><b>Bibliometrics</b><br>Where a topic is published and in which quartile, journals above a percentile cut-off, counts per year, themes over time, BibTeX. <a href="docs/bibliometrics.md">More</a></td></tr>
 <tr><td width="50%" valign="top"><img src="https://raw.githubusercontent.com/michalhron/scopus-plus-mcp/main/docs/assets/icon-fulltext.svg" width="48" height="48" alt="" align="left"><b>Full-text search</b><br>Find Elsevier papers that use a term in their body, and see how often and where each one uses it. <a href="docs/search.md#full-text">More</a></td><td width="50%" valign="top"><img src="https://raw.githubusercontent.com/michalhron/scopus-plus-mcp/main/docs/assets/icon-access.svg" width="48" height="48" alt="" align="left"><b>Honest about access</b><br>One call tells you which tools your Scopus access supports, and why the rest fail. <a href="docs/access.md">More</a></td></tr>
 <tr><td width="50%" valign="top"><img src="https://raw.githubusercontent.com/michalhron/scopus-plus-mcp/main/docs/assets/icon-skill.svg" width="48" height="48" alt="" align="left"><b>Main-path skill</b><br>Walks Claude from a query to a drawn main path map. Ships with the Claude Code plugin. <a href="plugins/scopus-plus-mcp/skills/main-path/README.md">More</a></td><td width="50%" valign="top"><img src="https://raw.githubusercontent.com/michalhron/scopus-plus-mcp/main/docs/assets/icon-tested.svg" width="48" height="48" alt="" align="left"><b>Tested</b><br>510 test functions, CI on Linux, macOS and Windows, and a live check of every tool against the real APIs. <a href="docs/development.md">More</a></td></tr>
 </table>
@@ -36,6 +36,8 @@ packages (bibliometrix, pybliometrics, VOSviewer, Pajek): [comparison](docs/comp
 >
 > *How has publishing on "digital transformation" grown since 2010?*
 >
+> *Build a corpus on digital transformation across IS, strategy and marketing, top-quartile journals only, and show which fields cite which.*
+>
 > *Get SJR and CiteScore for the Basket of Eight, and BibTeX for the papers we just found.*
 
 More, with the tools each one triggers: [prompt examples](docs/examples.md).
@@ -52,7 +54,7 @@ open. Responses are cached, and long jobs run in the background.
 
 ## Tools
 
-<p align="center"><img src="https://raw.githubusercontent.com/michalhron/scopus-plus-mcp/main/docs/assets/tools.svg" alt="35 tools in six families: search, citations, networks, audit, bibliometrics, diagnostics. Fifteen also run on OpenAlex." width="100%"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/michalhron/scopus-plus-mcp/main/docs/assets/tools.svg" alt="36 tools in six families: search, citations, networks, audit, bibliometrics, diagnostics. Sixteen also run on OpenAlex." width="100%"></p>
 
 | | Family | Tools | Guide |
 | :-: | --- | --- | --- |
@@ -60,7 +62,7 @@ open. Responses are cached, and long jobs run in the background.
 | <img src="https://raw.githubusercontent.com/michalhron/scopus-plus-mcp/main/docs/assets/icon-citations.svg" width="28" height="28" alt=""> | Citations | `get_references` · `get_citing_papers` | [search](docs/search.md) |
 | <img src="https://raw.githubusercontent.com/michalhron/scopus-plus-mcp/main/docs/assets/icon-networks.svg" width="28" height="28" alt=""> | Networks | `bibliographic_coupling` · `co_citation` · `citation_lineage` · `citation_network` · `historiograph` · `rpys` · `research_fronts` | [networks](docs/networks.md) |
 | <img src="https://raw.githubusercontent.com/michalhron/scopus-plus-mcp/main/docs/assets/icon-audit.svg" width="28" height="28" alt=""> | Audit | `resolve_citers` · `citation_context` · `path_transmission` · `coding_agreement` · `index_coverage` · `check_retractions` | [audit](docs/audit.md) |
-| <img src="https://raw.githubusercontent.com/michalhron/scopus-plus-mcp/main/docs/assets/icon-bibliometrics.svg" width="28" height="28" alt=""> | Bibliometrics | `publication_counts` · `topic_landscape` · `thematic_evolution` · `get_journal_metrics` · `find_journals` · `get_bibtex` · `import_records` | [bibliometrics](docs/bibliometrics.md) |
+| <img src="https://raw.githubusercontent.com/michalhron/scopus-plus-mcp/main/docs/assets/icon-bibliometrics.svg" width="28" height="28" alt=""> | Bibliometrics | `publication_counts` · `topic_landscape` · `topic_profile` · `thematic_evolution` · `get_journal_metrics` · `find_journals` · `get_bibtex` · `import_records` | [bibliometrics](docs/bibliometrics.md) |
 | <img src="https://raw.githubusercontent.com/michalhron/scopus-plus-mcp/main/docs/assets/icon-diagnostics.svg" width="28" height="28" alt=""> | Diagnostics and jobs | `diagnose_connection` · `get_quota_status` · `get_server_info` · `job_status` · `job_result` | [access](docs/access.md) |
 
 Every parameter of every tool: [tool reference](docs/tools.md).

@@ -20,6 +20,40 @@ matched against title and abstract and quoted phrases stay together.
 `scope` restricts a search to chosen journals by ISSN. Pass a list of ISSNs,
 or `basket_of_eight` (also `ais8`) for the AIS Senior Scholars' Basket of
 Eight. ISSNs are used because Scopus spells journal names inconsistently.
+`scope` also takes the path to a CSV file with an ISSN column: the output of
+`find_journals`, a Litbaskets export, or a list you keep locally. Columns
+whose header contains "issn" are read, and a cell may hold several ISSNs. On
+OpenAlex, a scope of more than 50 journals runs as several requests that are
+merged and de-duplicated.
+
+### Topics and work types (OpenAlex)
+
+With `source="openalex"`, `topics` keeps papers about OpenAlex topics,
+subfields or fields. OpenAlex files every work under one of 4,516 topics,
+which sit in 252 subfields and 26 fields. Name them by ID (`T10346`,
+`subfield:1710`, `field:17`) or by exact name. A name that matches more than
+one entity, or none exactly, is refused with the candidates listed. Several
+entries combine as OR and must sit at one level. Each name costs one extra
+request, and the 26 fields and 252 subfields are fetched once and cached.
+
+`topic_match` decides what is matched. `primary` (the default) uses the one
+topic OpenAlex ranks first for a paper and gives a tighter corpus. `any`
+matches a paper when any of its assigned topics is in the scope, which
+catches papers that sit between fields.
+
+`work_types` defaults to articles, reviews, books and book chapters whenever
+`topics` is set. Since October 2026 OpenAlex also gives topics to datasets,
+specimens and proposals, and this default keeps them out. Pass `all` to keep
+every type. `topics` combines with `scope` and with the quality cut as AND.
+With `source="scopus"`, `topics` raises an error. Scopus subject areas and
+OpenAlex topics do not map onto each other.
+
+The reply starts with the resolved scope: topic names and IDs, level,
+primary or any, and record types. `publication_counts`, `citation_network`,
+`research_fronts`, `rpys`, `historiograph` and `thematic_evolution` take the
+same `topics`, `topic_match` and `work_types`. `min_percentile` and its
+companions (see [bibliometrics](bibliometrics.md#which-journals-clear-the-bar))
+take the same route.
 
 When results go to files, `inline` decides what comes back in the reply:
 `sample` (the first 10), `compact` (every record as one line of key fields)

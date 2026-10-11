@@ -88,6 +88,17 @@ retracted papers are flagged too.
 Sets of more than about 50 papers can take longer than the client waits. The
 tool then returns a job ID: ask for `job_status`, then `job_result`.
 
+On an OpenAlex corpus every paper carries the field and subfield of its
+primary topic, and `citation_network` reports how the fields connect. It
+counts the citing field by the cited field for every edge inside the set,
+gives the share of within-field and cross-field citations, and lists the
+largest cross-field flows. `flow_level="subfield"` does the same by subfield.
+It also marks the field of each paper on the global main path and counts
+where the path crosses from one field to another. This uses the records
+already fetched and adds no requests. Edges with an unclassified paper at one
+end are counted apart. Scopus records have no topic, so Scopus networks get
+none of this.
+
 With `edge_contexts=true` it also gathers the citing sentences for every
 edge and writes a coding sheet. See [audit](audit.md) for what to do with it.
 
@@ -110,7 +121,10 @@ communities, as CitNetExplorer does. Each front is described by its years,
 density, core papers and distinguishing keywords. The reply also places every
 paper of the global main path in its front. A path that stays in one front
 traces a single conversation. A path that hops between fronts stitches
-several together.
+several together. On an OpenAlex corpus each front also gets its field mix,
+the shares of the disciplines of its papers. A front where one field holds at
+least 80% is single field, one above 50% is mixed, and one where no field
+holds a majority is a meeting point of several disciplines.
 
 ## Opening the results elsewhere
 
@@ -127,6 +141,8 @@ Every network is written to disk as well as summarised in the reply.
 The Claude Code plugin installs the
 [main-path skill](../plugins/scopus-plus-mcp/skills/main-path/README.md). It
 walks Claude through a main path analysis from a query to a drawn map. For
-Claude Desktop, zip its folder and upload it as a skill.
+Claude Desktop, zip its folder and upload it as a skill. On an OpenAlex
+corpus, `plot_main_path.py --lanes-by-field` draws one lane per discipline on
+the path, so you see where it crosses fields.
 
 Parameters for every tool: [tool reference](tools.md#networks-and-lineage).

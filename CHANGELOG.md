@@ -6,6 +6,36 @@ are pushed yet (see "Release process" in ROADMAP.md).
 ## [Unreleased]
 
 ### Added
+- OpenAlex topics as a corpus scope. `topics` on `search_all`,
+  `publication_counts`, `citation_network`, `research_fronts`, `rpys`,
+  `historiograph` and `thematic_evolution` (OpenAlex only) takes topic,
+  subfield or field IDs or exact names, several as OR at one level, matched
+  on the primary topic or any topic (`topic_match`). Ambiguous or unknown
+  names are refused with the candidates. `work_types` defaults to articles,
+  reviews, books and book chapters, because OpenAlex's October 2026
+  classifier also gives datasets and specimens topics. The reply opens with
+  the resolved scope. OpenAlex records carry `topic_id`, `topic`, `subfield`,
+  `field`, `domain` and `topic_score`. Live check: not yet run, because the
+  build session could not reach OpenAlex.
+- Field-relative quality cut: `min_percentile`, `percentile_rule`,
+  `categories` and `include_venues`. Keeps papers from journals at or above a
+  CiteScore percentile in their own Scopus category, so one corpus can span
+  IS, strategy and marketing. Lists journals kept and dropped, venues without
+  CiteScore, proceedings dropped and the share removed, with a CSV. Refuses
+  without Scopus Serial Title access, since OpenAlex's own measures are not
+  field-relative. Live check: not yet run.
+- `scope` takes a CSV path with an ISSN column. OpenAlex scopes over 50
+  journals now run in merged, de-duplicated chunks in every tool that takes
+  `scope`.
+- `topic_profile`: papers and shares by field, subfield and topic, per year
+  by field, and the first year each field passed a share threshold. Grouped
+  requests only. Live check: not yet run.
+- `citation_network` reports the field-to-field citation matrix
+  (`flow_level` field or subfield), the within-field and cross-field shares,
+  the largest cross-field flows and the field of each main-path paper.
+  `research_fronts` gives each front its field mix. No extra requests.
+  `plot_main_path.py` has `--lanes-by-field`. Live check: not yet run.
+- `main-path` skill: slicing a field by OpenAlex topics with a quality cut.
 - `main-path` skill in the Claude Code plugin: a guided main path
   analysis from a Scopus query to a drawn map (search path count, global
   main path, key routes, a year-by-lane plot). Written for the tutorial

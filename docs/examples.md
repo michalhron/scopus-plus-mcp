@@ -52,6 +52,16 @@ no Scopus subscription.
 
 `find_journals` with `min_percentile=90` returns the journals and a ready `SRCID(...)` fragment; `search_all` then runs `TITLE-ABS-KEY("digital platform") AND SRCID(...) AND PUBYEAR > 2017`.
 
+## Build a corpus across disciplines
+
+> Build a corpus on digital transformation across IS, strategy and marketing, top-quartile journals only, and show which fields cite which.
+
+`topic_profile` to see which fields carry the debate and when each joined it. Then `search_all` or `citation_network` with `source="openalex"`, `topics` (the OpenAlex topics or subfields for the three fields) and `min_percentile=75`. The cut compares each journal with the journals of its own Scopus category. `citation_network` then reports the share of within-field and cross-field citations, the largest cross-field flows, and the fields the main path passes through.
+
+> Which disciplines study "digital transformation", and when did each one start?
+
+`topic_profile`: papers and shares by field, subfield and topic, and the first year each field passed 5% of that year's papers.
+
 ## Read into the text
 
 > Which Elsevier papers use "organizing vision" in their text, and do they engage with it or just cite it?
