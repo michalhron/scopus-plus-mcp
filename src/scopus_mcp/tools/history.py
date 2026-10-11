@@ -8,6 +8,7 @@ import mcp.types as types
 
 from .. import jobs
 from ..baskets import SCOPE_SCHEMA
+from ..journal_cut import QUALITY_PROPS
 from ..topics import TOPIC_PROPS
 from ..history import historiograph, render_historiograph_png, render_rpys_png, spectrogram
 from ..lineage import compute_main_path, write_pajek
@@ -29,6 +30,7 @@ CORPUS_PROPS = {
                     "description": "With query: how many papers to include (default 300)."},
     "scope": SCOPE_SCHEMA,
     **TOPIC_PROPS,
+    **QUALITY_PROPS,
     "source": SOURCE_SCHEMA,
 }
 

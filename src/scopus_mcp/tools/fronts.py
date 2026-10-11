@@ -99,7 +99,7 @@ async def _research_fronts(arguments: dict) -> list:
     json_path = out / f'{base}.json'
     json_path.write_text(json.dumps({'fronts': fronts, 'front_of': clustering['front_of'],
                                      'main_path': main_path, 'route': route,
-                                     **({'topic_scope': scope_report['topic_scope']} if scope_report else {})},
+                                     **{k: v for k, v in scope_report.items() if k != 'topic_scope_summary'}},
                                     ensure_ascii=False, indent=2), encoding='utf-8')
 
     unclustered = sum(1 for f in clustering['front_of'].values() if f == 0)

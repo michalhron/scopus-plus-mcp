@@ -321,6 +321,15 @@ class OpenAlexClient:
                 return out
             page += 1
 
+    async def sources_by_ids(self, source_ids: List[str]) -> List[Dict[str, Any]]:
+        """Journals and other venues by OpenAlex source ID (up to ID_BATCH per
+        request, 1 credit): name, ISSNs and venue type."""
+        data = await self._get('sources', {
+            'filter': 'openalex:' + '|'.join(source_ids), 'per-page': ID_BATCH,
+            'select': 'id,display_name,issn_l,issn,type',
+        }) or {}
+        return data.get('results') or []
+
     async def search_topics(self, name: str, count: int = 50) -> List[Dict[str, Any]]:
         """Topics whose name contains the words of `name`. One request."""
         data = await self._get('topics', {

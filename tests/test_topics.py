@@ -313,7 +313,7 @@ def test_publication_counts_with_topics_reports_scope():
         'topics': ['field:17'], 'topic_match': 'any'}, c))
     assert out['topic_scope']['level'] == 'field' and out['topic_scope']['match'] == 'any'
     assert 'topics.field.id:17' in seen[0]
-    assert out['topic_scope_summary'].startswith('Topic scope: field')
+    assert out['scope_summary'].startswith('Topic scope: field')
 
 
 def test_publication_counts_scopus_with_topics_raises():

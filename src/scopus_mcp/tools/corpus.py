@@ -27,9 +27,10 @@ from ..graphs import _make_node_label
 from ..importers import apply_corpus_file
 from ..retractions import check_dois, status_of
 from ..lineage import WEIGHTS, compute_main_path, key_route_paths, main_path_robustness, write_pajek
-from ..openalex import and_filters, bare_doi, clean_openalex_work, normalize_title, openalex_work_key, short_id
+from ..openalex import bare_doi, clean_openalex_work, normalize_title, openalex_work_key, short_id
 from ..output import _output_dir, _query_slug
-from ..topics import TOPIC_PROPS, build_topic_scope, reject_topics_for_scopus
+from ..journal_cut import QUALITY_PROPS
+from ..topics import TOPIC_PROPS, reject_topics_for_scopus
 from ..records import (
     clean_abstract_details,
     clean_references,
@@ -47,7 +48,7 @@ from ..semantic_scholar import (
     clean_contexts,
     venue_issns,
 )
-from .common import SOURCE_SCHEMA, _resolve_openalex_work, _source, server_module
+from .common import SOURCE_SCHEMA, _resolve_openalex_work, _source, resolve_openalex_scope, server_module
 
 logger = logging.getLogger("scopus-plus-mcp")
 
@@ -131,6 +132,7 @@ TOOLS = [
                 },
                 "scope": SCOPE_SCHEMA,
                 **TOPIC_PROPS,
+                **QUALITY_PROPS,
                 "source": SOURCE_SCHEMA,
                 "key_routes": {
                     "type": "integer",
@@ -507,15 +509,20 @@ async def _collect_scopus(client, arguments):
     return nodes, fetch_errors, parse_errors, refs_by_id
 
 
-async def _collect_openalex(openalex, arguments, report=None):
+async def _collect_openalex(srv, arguments, report=None):
+    openalex = srv.openalex
     ids, query = arguments.get("ids"), arguments.get("query")
     issns = resolve_scope(arguments.get("scope"))
-    topic_scope = await build_topic_scope(openalex, arguments)
-    if topic_scope and ids:
-        raise ValueError("topics filter a query; with ids, pass only in-scope papers.")
-    if report is not None and topic_scope:
-        report['topic_scope'] = topic_scope.as_dict()
-        report['topic_scope_summary'] = topic_scope.report()
+    scoped = any(arguments.get(k) is not None for k in ('topics', 'min_percentile'))
+    if scoped and ids:
+        raise ValueError("topics and min_percentile filter a query; with ids, pass only "
+                         "in-scope papers.")
+    oa_scope = None
+    if not ids:
+        oa_scope = await resolve_openalex_scope(srv, arguments, query, issns)
+        if report is not None and oa_scope.lines:
+            report.update(oa_scope.info)
+            report['topic_scope_summary'] = oa_scope.summary
     works, fetch_errors, parse_errors = [], {}, {}
     if ids:
         for i in ids:
@@ -524,11 +531,8 @@ async def _collect_openalex(openalex, arguments, report=None):
             except Exception as exc:
                 fetch_errors[str(i)] = _err(exc)
     else:
-        extra = and_filters(openalex_issn_filter(issns) if issns else None,
-                            topic_scope.filter if topic_scope else None)
-        kwargs = {'extra_filter': extra} if extra else {}
         works, _ = await openalex.search(query, max_results=int(arguments.get("max_results", 300)),
-                                         sort='citedby', **kwargs)
+                                         sort='citedby', **oa_scope.kwargs)
     nodes, ref_ids = {}, {}
     for w in works:
         try:
@@ -558,7 +562,7 @@ async def collect_corpus(srv, arguments, report=None):
     if ids and len(ids) > MAX_CORPUS:
         raise ValueError(f"At most {MAX_CORPUS} ids per call.")
     if _source(arguments) == 'openalex':
-        out = await _collect_openalex(srv.openalex, arguments, report)
+        out = await _collect_openalex(srv, arguments, report)
     else:
         reject_topics_for_scopus(arguments)
         out = await _collect_scopus(srv.client, arguments)
@@ -701,8 +705,7 @@ async def _citation_network(arguments: dict) -> list:
         'completeness_rule': RULE_TEXT,
         'server_version': srv.SERVER_VERSION,
     }
-    if scope_report:
-        corpus['topic_scope'] = scope_report['topic_scope']
+    corpus.update({k: v for k, v in scope_report.items() if k != 'topic_scope_summary'})
     json_path = out / f'{base}.json'
     json_path.write_text(json.dumps(corpus, ensure_ascii=False, indent=2), encoding='utf-8')
     net_path = write_pajek(

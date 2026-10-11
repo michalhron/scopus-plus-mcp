@@ -104,11 +104,13 @@ class TopicScope:
 
 
 def reject_topics_for_scopus(arguments: dict) -> None:
-    if any(arguments.get(k) for k in ('topics', 'work_types')):
+    if any(arguments.get(k) is not None and arguments.get(k) != [] for k in (
+            'topics', 'work_types', 'min_percentile', 'percentile_rule', 'include_venues')):
         raise ValueError(
-            "topics and work_types need source='openalex'. Scopus has subject "
-            "areas (ASJC), not OpenAlex topics, and the two do not map onto "
-            "each other."
+            "topics, work_types and the quality cut (min_percentile) need "
+            "source='openalex'. Scopus has subject areas (ASJC), not OpenAlex "
+            "topics, and the two do not map onto each other. For a Scopus "
+            "quality bar use find_journals and pass its ISSNs as scope."
         )
 
 

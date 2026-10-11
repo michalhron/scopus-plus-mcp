@@ -11,10 +11,10 @@ from ..fulltext_search import PAGE_SIZE as SD_PAGE_SIZE, analyze_mentions, build
 from ..openalex import clean_openalex_work
 from ..output import should_write_to_disk, write_fulltext_to_disk, write_results_to_disk
 from ..records import _fetch_abstract_crossref, _fetch_abstract_openalex, clean_abstract_details, clean_author_profile, clean_identifiers, clean_search_results, detect_id_type
-from ..baskets import SCOPE_SCHEMA, openalex_issn_filter, resolve_scope, scope_scopus_query
-from ..openalex import and_filters
-from ..topics import TOPIC_PROPS, build_topic_scope, reject_topics_for_scopus
-from .common import SOURCE_SCHEMA, _source, server_module
+from ..baskets import SCOPE_SCHEMA, resolve_scope, scope_scopus_query
+from ..journal_cut import QUALITY_PROPS
+from ..topics import TOPIC_PROPS, reject_topics_for_scopus
+from .common import SOURCE_SCHEMA, _source, resolve_openalex_scope, server_module
 
 logger = logging.getLogger("scopus-plus-mcp")
 
@@ -96,6 +96,7 @@ TOOLS = [
                 "source": SOURCE_SCHEMA,
                 "scope": SCOPE_SCHEMA,
                 **TOPIC_PROPS,
+                **QUALITY_PROPS,
                 "inline": {
                     "type": "string",
                     "enum": ["sample", "compact", "full"],
@@ -315,17 +316,14 @@ async def _search_all(arguments: dict) -> list:
     if inline not in ("sample", "compact", "full"):
         raise ValueError("inline must be 'sample', 'compact' or 'full'")
     issns = resolve_scope(arguments.get("scope"))
-    topic_scope = None
     if source != 'openalex':
         reject_topics_for_scopus(arguments)
 
     if source == 'openalex':
         sort = arguments.get("sort", "relevance")
-        topic_scope = await build_topic_scope(openalex, arguments)
-        extra = and_filters(openalex_issn_filter(issns) if issns else None,
-                            topic_scope.filter if topic_scope else None)
-        kwargs = {'extra_filter': extra} if extra else {}
-        works, meta = await openalex.search(query, max_results=max_results, sort=sort, **kwargs)
+        oa_scope = await resolve_openalex_scope(srv, arguments, query, issns)
+        works, meta = await openalex.search(query, max_results=max_results, sort=sort,
+                                            **oa_scope.kwargs)
         results = [clean_openalex_work(w) for w in works]
     else:
         sort = arguments.get("sort", "coverDate")
@@ -359,8 +357,8 @@ async def _search_all(arguments: dict) -> list:
 
     if source == 'openalex':
         text = "Source: OpenAlex (title and abstract search).\n" + text
-        if topic_scope:
-            text = topic_scope.report() + "\n" + text
+        if oa_scope.lines:
+            text = oa_scope.summary + "\n" + text
     if meta.get('note'):
         text += f"\n\nNote: {meta['note']}"
 

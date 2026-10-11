@@ -7,6 +7,7 @@ Print and electronic ISSNs are both listed: ISSN() matches either, and
 OpenAlex source ISSNs include both.
 """
 import re
+from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 from .openalex import chunk_or
@@ -36,10 +37,14 @@ ALIASES = {
 
 SCOPE_SCHEMA = {
     "description": (
-        "Restrict to journals, by ISSN: a list of ISSNs, or a basket name "
+        "Restrict to journals, by ISSN: a list of ISSNs, a basket name "
         "('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of "
-        "Eight). ISSNs are used rather than journal names, which Scopus "
-        "spells inconsistently."
+        "Eight), or the path to a CSV file with an ISSN column (find_journals "
+        "output, a Litbaskets export, a list you keep locally; columns named "
+        "like issn or eissn are read, several ISSNs per cell allowed). ISSNs "
+        "are used rather than journal names, which Scopus spells "
+        "inconsistently. On OpenAlex, lists over 50 journals run as several "
+        "requests."
     ),
     "anyOf": [
         {"type": "string"},
@@ -57,10 +62,52 @@ def normalize_issn(issn: str) -> str:
     return f"{m.group(1)}-{m.group(2).upper()}"
 
 
+CSV_SUFFIXES = ('.csv', '.tsv', '.txt')
+MAX_SCOPE_FILE = 5_000_000
+
+
+def issns_from_file(path: str) -> List[str]:
+    """ISSNs from every column whose header contains 'issn' in a CSV or TSV
+    file (find_journals gives issn and eissn; Litbaskets exports and local
+    lists differ in spelling). Cells may hold several ISSNs."""
+    import csv
+    p = Path(path).expanduser()
+    if p.suffix.lower() not in CSV_SUFFIXES:
+        raise ValueError(f"A scope file must be a {'/'.join(CSV_SUFFIXES)} file, not {p.name!r}.")
+    if not p.is_file():
+        raise ValueError(f"Scope file {str(p)!r} does not exist.")
+    if p.stat().st_size > MAX_SCOPE_FILE:
+        raise ValueError(f"Scope file {p.name!r} is over {MAX_SCOPE_FILE // 1_000_000} MB.")
+    text = p.read_text(encoding='utf-8-sig', errors='replace')
+    try:
+        dialect = csv.Sniffer().sniff(text[:4096], delimiters=',;\t')
+    except csv.Error:
+        dialect = csv.excel
+    reader = csv.DictReader(text.splitlines(), dialect=dialect)
+    columns = [c for c in (reader.fieldnames or []) if c and 'issn' in c.lower()]
+    if not columns:
+        raise ValueError(f"{p.name!r} has no column with 'issn' in its header "
+                         f"(found: {', '.join(reader.fieldnames or []) or 'none'}).")
+    found: List[str] = []
+    for row in reader:
+        for col in columns:
+            for token in re.split(r'[,;\s|]+', row.get(col) or ''):
+                if not token:
+                    continue
+                try:
+                    found.append(normalize_issn(token))
+                except ValueError:
+                    continue  # blanks and 'n/a' are common in exports
+    if not found:
+        raise ValueError(f"{p.name!r} has an ISSN column but no valid ISSNs in it.")
+    return list(dict.fromkeys(found))
+
+
 def resolve_scope(scope: Union[None, str, List[str]]) -> Optional[List[str]]:
     """ISSN list for a scope argument; None when unscoped.
 
-    A string is a basket name or a comma-separated ISSN list."""
+    A string is a basket name, a CSV file path, or a comma-separated ISSN
+    list."""
     if scope is None or scope == '' or scope == []:
         return None
     if isinstance(scope, str):
@@ -68,6 +115,8 @@ def resolve_scope(scope: Union[None, str, List[str]]) -> Optional[List[str]]:
         key = ALIASES.get(key, key)
         if key in BASKETS:
             return [i for issns in BASKETS[key].values() for i in issns]
+        if scope.strip().lower().endswith(CSV_SUFFIXES):
+            return issns_from_file(scope.strip())
         scope = [s for s in re.split(r'[,\s;]+', scope) if s]
     try:
         issns = [normalize_issn(s) for s in scope]
