@@ -205,6 +205,73 @@ co-authorship and country networks and altmetrics (not lineage questions).
 Orchestrator skill (Session D below) and the lineage-model ideas. Mostly
 skill-side, so independent of distribution.
 
+## OpenAlex-only operation (planned 2026-10-11)
+
+Goal: every tool that can run on OpenAlex does, and the server works when
+Scopus is down or not subscribed. Audit of the 36 tools (code reading only,
+checked at the entry points; not yet run): 21 work on OpenAlex, 5 partly, 10
+are Scopus-only. Order is by how much each unblocks.
+
+**A. Startup blocker (do first; nothing else matters until this lands)**
+- [ ] Start without a Scopus key. `server.py` builds `ScopusClient()` at
+      import and `client.py` raises on a missing key, so even the 21 tools
+      that never call Scopus are unreachable. Make the Scopus client lazy or
+      optional; Scopus tools then fail with one clear message naming
+      `set-key api_key`. The test fixtures set a dummy key to get around this.
+- [ ] Test: start the server and call `search_all(source='openalex')` and
+      `topic_profile` with no Scopus key and no network to Scopus.
+- [ ] `docs/configuration.md` lists `SCOPUS_API_KEY` as required; say it is
+      required only for Scopus tools.
+
+**B. Tools with no OpenAlex branch**
+- [ ] `get_abstract_details`, `resolve_identifier`: resolve DOIs and `W...` IDs
+      through OpenAlex (`get_work`); keep Scopus IDs on Scopus.
+- [ ] `get_author_profile`: OpenAlex author lookup (the OpenAlex branch of
+      `search_authors` exists).
+- [ ] `topic_landscape`: Scopus facets today; build the equivalent from
+      OpenAlex `group_by` (topics, fields). `topic_profile` already does most
+      of it.
+- [ ] `find_journals`: CiteScore percentiles have no OpenAlex equivalent. Offer
+      an OpenAlex ranking by 2-year mean citedness, labelled as not
+      field-relative, or refuse with a message that says so.
+- [ ] `search_fulltext`: ScienceDirect only. Refuse cleanly under OpenAlex
+      (the open-access full-text lookup in `get_fulltext` already works).
+- [ ] `index_coverage`: the Scopus REF side is unguarded, so a Scopus error
+      aborts the whole call. Return the OpenAlex and Semantic Scholar sets and
+      mark the Scopus column unavailable.
+- [ ] `diagnose_connection`, `get_quota_status`: report OpenAlex too (key
+      source, daily budget from the `x-ratelimit-*` headers). Key source is
+      done; budget is not.
+
+**C. Partial tools**
+- [ ] `import_records`: `resolve` defaults to Scopus and aborts on error. Fall
+      back to DOI matching and OpenAlex when Scopus is unavailable.
+- [ ] `get_bibtex`, `citation_context`, `path_transmission`, `check_retractions`:
+      Scopus-ID inputs still call Scopus. Resolve Scopus IDs to DOIs once,
+      cache the mapping, and skip a Scopus-ID input with a per-item message
+      when Scopus is down. Add a `source` parameter to the first three.
+- [ ] `get_references`, `get_citing_papers`, `citation_network`: a Scopus ID
+      input is first resolved to a DOI through Scopus. Same fix.
+
+**D. Consistency**
+- [ ] Tools without a `source` field silently ignore `source='openalex'`
+      (`search_scopus`, `topic_landscape`, `index_coverage`, ...). Return an
+      explicit error, as `topic_profile` does.
+- [ ] One table in `docs/data-sources.md`: tool by source, what differs
+      (author affiliation filter is post-hoc on the top 25 name matches;
+      `citation_lineage` refuses `sort='relevancy'`; `get_journal_metrics`
+      takes ISSNs only).
+
+**E. From the live check of the topics work (2026-10-11)**
+- [ ] Live check of `--lanes-by-field`, the OR-cap chunking, `topic_match` and
+      `work_types`.
+- [ ] Live check of the year and month split of the quality cut once the
+      OpenAlex budget allows (anonymous: $0.10 per day; a free key raises it).
+- [ ] Budget guard: before a split that needs more than N requests, report the
+      estimate and the remaining daily budget instead of running into a 429.
+- [ ] `set-key` for the Windows and Linux stores has no test on those
+      platforms; CI only covers the argument handling.
+
 ## Release process
 
 Change `__version__` in `src/scopus_mcp/__init__.py` (the only place the
